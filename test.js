@@ -738,6 +738,71 @@ test('stacked arcade — 15 collapse cycles stay deducible & bank-supplied', () 
     `expected ≥5 collapse cycles, got ${cyclesCompleted}`);
   state.data = null;
 });
+
+test('stacked arcade — no zombie equations after non-bottom-layer collapse', () => {
+  // Regression for v44c: collapsing layer N didn't clear vEqs going DOWN from
+  // N (in the layer-below's vEqIndicesUp), so they kept referencing the
+  // now-removed top cell. The player saw a phantom blank cell. Bug only
+  // manifests when clearing a non-bottom layer (bottom has no layer below).
+  const exp = loadStub();
+  const { generatePuzzle, applyStackedClears, state } = exp;
+  state.settings.scoreMode = true;
+  state.settings.arcadeMode = true;
+
+  for (let trial = 0; trial < 15; trial++) {
+    state.placed = {}; state.clearedEqs = {}; state.settledCells = {};
+    const data = generatePuzzle('hard');
+    if (!data) continue;
+    state.data = data;
+    state.bank = (() => {
+      const b = []; for (const k of data.layout.cells) if (!data.givens[k]) b.push(data.puzzle.values[k]);
+      if (data.decoys) for (const d of data.decoys) b.push(d);
+      return b.sort((a, b) => a - b);
+    })();
+
+    // Clear the TOP layer (which always has a layer below — triggers the bug)
+    for (let cycle = 0; cycle < 5; cycle++) {
+      const sorted = data.layout.layers.slice().sort((a, b) => a.row - b.row);
+      let top = null;
+      for (const l of sorted) {
+        if (l.hEqIndices.length === 0) continue;
+        const eq = data.layout.equations[l.hEqIndices[0]];
+        if (eq.cells && eq.cells.length === 3) { top = l; break; }
+      }
+      if (!top || data.layout.layers.length < 2) break;
+      const eqIdx = top.hEqIndices[0];
+      const eq = data.layout.equations[eqIdx];
+      for (const k of eq.cells) {
+        if (!data.givens[k] && state.placed[k] == null) {
+          state.placed[k] = data.puzzle.values[k];
+        }
+      }
+      state.clearedEqs[eqIdx] = true;
+      applyStackedClears();
+
+      // No equation should reference a cell that's not in layout.cells
+      const cellSet = new Set(data.layout.cells);
+      for (let i = 0; i < data.layout.equations.length; i++) {
+        const e = data.layout.equations[i];
+        if (!e.cells || e.cells.length === 0) continue;
+        for (const c of e.cells) {
+          assert.ok(cellSet.has(c),
+            `trial ${trial} cycle ${cycle}: eq[${i}] (${e.orientation}) references zombie cell ${c} not in layout`);
+        }
+      }
+      // Also: every active equation's cells should all have values
+      for (let i = 0; i < data.layout.equations.length; i++) {
+        const e = data.layout.equations[i];
+        if (!e.cells || e.cells.length === 0) continue;
+        for (const c of e.cells) {
+          assert.ok(data.puzzle.values[c] !== undefined,
+            `trial ${trial} cycle ${cycle}: eq[${i}] cell ${c} has no value`);
+        }
+      }
+    }
+  }
+  state.data = null;
+});
 const VIEWPORTS = [
   { w: 360, h: 640, label: '360×640' },
   { w: 375, h: 667, label: '375×667' },

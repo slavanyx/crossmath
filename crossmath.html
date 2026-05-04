@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#FBF6E8">
-<meta name="build" content="v44b-arcade-tetris-spawn-guard">
+<meta name="build" content="v44c-arcade-tetris-zombie-veq-fix">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='42' fill='%23FBF6E8'/></svg>">
 
 <!-- PWA manifest inline as data URI -->
@@ -2180,6 +2180,32 @@ function collapseOneLayer(layerIdx) {
     if (vEq.cells && vEq.cells[1]) removeSet[vEq.cells[1]] = true;
   }
 
+  // ALSO: vEqs going DOWN from this layer (top cell in this layer's hEq, bottom
+  // in the layer below). Those are in the next-layer-down's vEqIndicesUp. Their
+  // top cell is being removed (above), so the vEq becomes broken — clear it AND
+  // remove its connector middle cell (which only existed for that vEq).
+  // Without this, after a middle-layer collapse you get zombie vEqs referencing
+  // cells that no longer exist (v44c fix — caught via user debug dump).
+  var clearedRow = layer.row;
+  var brokenVEqIndices = [];
+  var layerBelow = null;
+  for (var lb = 0; lb < p.layout.layers.length; lb++) {
+    if (lb === layerIdx) continue;
+    if (p.layout.layers[lb].row === clearedRow + 2) {
+      layerBelow = p.layout.layers[lb];
+      break;
+    }
+  }
+  if (layerBelow) {
+    for (var vk = 0; vk < layerBelow.vEqIndicesUp.length; vk++) {
+      var bvEqIdx = layerBelow.vEqIndicesUp[vk];
+      var bvEq = p.layout.equations[bvEqIdx];
+      if (bvEq && bvEq.cells && bvEq.cells[1]) removeSet[bvEq.cells[1]] = true;
+      brokenVEqIndices.push(bvEqIdx);
+    }
+    layerBelow.vEqIndicesUp = []; // detach — those vEqs are gone now
+  }
+
   // Remove from cells, values, givens, placed, settled
   p.layout.cells = p.layout.cells.filter(function (k) { return !removeSet[k]; });
   for (var rk in removeSet) {
@@ -2199,8 +2225,10 @@ function collapseOneLayer(layerIdx) {
     p.layout.equations[layer.vEqIndicesUp[vi2]] = { cells: [], orientation: 'v' };
     p.puzzle.eqOps[layer.vEqIndicesUp[vi2]] = [];
   }
-
-  var clearedRow = layer.row;
+  for (var bvi = 0; bvi < brokenVEqIndices.length; bvi++) {
+    p.layout.equations[brokenVEqIndices[bvi]] = { cells: [], orientation: 'v' };
+    p.puzzle.eqOps[brokenVEqIndices[bvi]] = [];
+  }
 
   // Drop layer from layers metadata
   p.layout.layers.splice(layerIdx, 1);
