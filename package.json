@@ -1,0 +1,12 @@
+{
+  "name": "crossmath",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Math crossword puzzle — single-file HTML app",
+  "scripts": {
+    "test": "node --test test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}
