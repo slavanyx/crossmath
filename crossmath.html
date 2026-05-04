@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#FBF6E8">
-<meta name="build" content="v44-arcade-tetris">
+<meta name="build" content="v44b-arcade-tetris-spawn-guard">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='42' fill='%23FBF6E8'/></svg>">
 
 <!-- PWA manifest inline as data URI -->
@@ -2398,6 +2398,58 @@ function spawnNewTopLayer() {
     state.arcadeIncomingCells[newHCells[ic]] = { fromX: '0px', fromY: '-60px' };
   }
   state.arcadeIncomingCells[connectorCellKey] = { fromX: '0px', fromY: '-60px' };
+
+  // SAFETY NET: verify the resulting state is bank-supply consistent.
+  // For every non-given cell (across the WHOLE current puzzle), the bank must
+  // have enough tiles to cover what's needed minus what's already placed. If
+  // not, roll back the spawn so the player isn't stranded with an unsolvable
+  // equation. (Found in v44b: edge case where existing cell values combined
+  // with newly spawned values exceed bank supply for some value.)
+  var needAfter = {}, haveAfter = {};
+  for (var cci = 0; cci < p.layout.cells.length; cci++) {
+    var ck = p.layout.cells[cci];
+    if (!p.givens[ck] && state.placed[ck] == null) {
+      var nv = p.puzzle.values[ck];
+      needAfter[nv] = (needAfter[nv] || 0) + 1;
+    }
+  }
+  for (var bi = 0; bi < state.bank.length; bi++) {
+    haveAfter[state.bank[bi]] = (haveAfter[state.bank[bi]] || 0) + 1;
+  }
+  // Subtract placed values (those tiles are "consumed")
+  for (var pkk in state.placed) {
+    if (state.placed[pkk] != null && haveAfter[state.placed[pkk]]) {
+      haveAfter[state.placed[pkk]]--;
+    }
+  }
+  var bankShortfall = false;
+  for (var nvk in needAfter) {
+    if ((haveAfter[nvk] || 0) < needAfter[nvk]) { bankShortfall = true; break; }
+  }
+  if (bankShortfall) {
+    // Roll back: remove the new cells, equations, givens, bank tiles, and layer.
+    var rollbackKeys = newHCells.concat([connectorCellKey]);
+    var rbSet = {};
+    for (var rk = 0; rk < rollbackKeys.length; rk++) rbSet[rollbackKeys[rk]] = true;
+    p.layout.cells = p.layout.cells.filter(function (k) { return !rbSet[k]; });
+    for (var rkk in rbSet) {
+      delete p.puzzle.values[rkk];
+      delete p.givens[rkk];
+      delete state.arcadeIncomingCells[rkk];
+    }
+    // Pop the 2 bank tiles we added (last 2)
+    state.bank.pop(); state.bank.pop();
+    state.bank.sort(function (a, b) { return a - b; });
+    // Remove the 2 equations we appended (newVEqIdx, newHEqIdx — last 2)
+    p.layout.equations.pop(); p.layout.equations.pop();
+    p.puzzle.eqOps.pop(); p.puzzle.eqOps.pop();
+    // Remove the new top layer + un-attach vEq from existing top
+    p.layout.layers.shift();
+    for (var lkk = 0; lkk < p.layout.layers.length; lkk++) {
+      var idx = p.layout.layers[lkk].vEqIndicesUp.indexOf(newVEqIdx);
+      if (idx !== -1) p.layout.layers[lkk].vEqIndicesUp.splice(idx, 1);
+    }
+  }
 }
 
 /* ARCADE: replace a solved equation with a fresh one anchored to a cell on the grid.
@@ -3909,7 +3961,7 @@ function registerOfflineServiceWorker() {
                  "self.addEventListener('activate', function(e){e.waitUntil(self.clients.claim());});" +
                  "self.addEventListener('fetch', function(e){" +
                  "  if (e.request.method !== 'GET') return;" +
-                 "  e.respondWith(caches.open('crossmath-v17').then(function(cache){" +
+                 "  e.respondWith(caches.open('crossmath-v44').then(function(cache){" +
                  "    return cache.match(e.request).then(function(hit){" +
                  "      var fetchPromise = fetch(e.request).then(function(resp){" +
                  "        if (resp && resp.status === 200) cache.put(e.request, resp.clone());" +
