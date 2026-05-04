@@ -111,7 +111,13 @@ function loadStub() {
    rendering tests at multiple viewport sizes.
 -------------------------------------------------------------------------- */
 function loadJsdom(viewportW, viewportH) {
-  const dom = new JSDOM(HTML, { runScripts: 'outside-only', pretendToBeVisual: true });
+  // url: avoids "localStorage is not available for opaque origins" — jsdom 25
+  // blocks localStorage when the document origin is about:blank (the default).
+  const dom = new JSDOM(HTML, {
+    runScripts: 'outside-only',
+    pretendToBeVisual: true,
+    url: 'http://localhost/'
+  });
   Object.defineProperty(dom.window, 'innerWidth', { value: viewportW, configurable: true });
   Object.defineProperty(dom.window, 'innerHeight', { value: viewportH, configurable: true });
   setGlobal('window', dom.window);
