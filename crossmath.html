@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#FBF6E8">
-<meta name="build" content="v43-forgiving-drop">
+<meta name="build" content="v44-arcade-tetris">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='42' fill='%23FBF6E8'/></svg>">
 
 <!-- PWA manifest inline as data URI -->
@@ -1322,6 +1322,228 @@ function pickDecoys(layout, puzzle, givens, count, cfg) {
 }
 
 /* ========================================================================
+   STACKED LAYOUT (arcade Tetris mode)
+   Builds a vertical stack of horizontal-equation "layers" connected by
+   vertical-equation "connectors". Bottom layer can clear when its
+   horizontal equations are all correctly solved; gravity drops everything
+   above; a fresh layer spawns at the top.
+======================================================================== */
+function genArcadeStack(cfg, numLayers) {
+  numLayers = numLayers || 4;
+  var equations = [];
+  var occupied = {};
+  var layers = [];
+
+  // Layer 0 (top): one horizontal triplet at row 0, cols 0..2
+  var firstCells = ['0,0', '0,1', '0,2'];
+  for (var i = 0; i < 3; i++) occupied[firstCells[i]] = true;
+  equations.push({ cells: firstCells, orientation: 'h' });
+  layers.push({ row: 0, hEqIndices: [0], vEqIndicesUp: [] });
+
+  var prevConnectorCol = null;
+
+  for (var li = 1; li < numLayers; li++) {
+    var prevLayer = layers[li - 1];
+    var newRow = prevLayer.row + 2;
+    var prevHEq = equations[prevLayer.hEqIndices[0]];
+    var prevHEqStartCol = +prevHEq.cells[0].split(',')[1];
+
+    var added = false;
+    for (var attempt = 0; attempt < 50; attempt++) {
+      // Bias toward 0 offset; allow ±1 for irregular look
+      var offsetPool = [-1, 0, 0, 0, 1];
+      var offset = offsetPool[Math.floor(R() * offsetPool.length)];
+      var newHStartCol = prevHEqStartCol + offset;
+
+      // Shared column range with prev layer (anchor must be in both)
+      var newHCols = [newHStartCol, newHStartCol + 1, newHStartCol + 2];
+      var prevHCols = [prevHEqStartCol, prevHEqStartCol + 1, prevHEqStartCol + 2];
+      var sharedCols = [];
+      for (var nc = 0; nc < newHCols.length; nc++) {
+        if (prevHCols.indexOf(newHCols[nc]) !== -1) sharedCols.push(newHCols[nc]);
+      }
+      if (sharedCols.length === 0) continue;
+
+      // Connector column must differ from previous to avoid 4+ chain at the same col
+      var options = [];
+      for (var sc = 0; sc < sharedCols.length; sc++) {
+        if (sharedCols[sc] !== prevConnectorCol) options.push(sharedCols[sc]);
+      }
+      if (options.length === 0) continue;
+      var connectorCol = options[Math.floor(R() * options.length)];
+
+      var newHCells = [];
+      for (var hi = 0; hi < 3; hi++) newHCells.push(newRow + ',' + newHCols[hi]);
+      var connectorCell = (newRow - 1) + ',' + connectorCol;
+
+      var conflict = false;
+      for (var ch = 0; ch < newHCells.length; ch++) {
+        if (occupied[newHCells[ch]]) { conflict = true; break; }
+      }
+      if (conflict) continue;
+      if (occupied[connectorCell]) continue;
+
+      // Commit
+      for (var ch2 = 0; ch2 < newHCells.length; ch2++) occupied[newHCells[ch2]] = true;
+      occupied[connectorCell] = true;
+      var hEqIdx = equations.length;
+      equations.push({ cells: newHCells, orientation: 'h' });
+      var vEqCells = [
+        (newRow - 2) + ',' + connectorCol,
+        connectorCell,
+        newRow + ',' + connectorCol
+      ];
+      var vEqIdx = equations.length;
+      equations.push({ cells: vEqCells, orientation: 'v' });
+      layers.push({ row: newRow, hEqIndices: [hEqIdx], vEqIndicesUp: [vEqIdx] });
+      prevConnectorCol = connectorCol;
+      added = true;
+      break;
+    }
+    if (!added) return null;
+  }
+
+  // Normalize so leftmost column is 0
+  var cells = Object.keys(occupied);
+  var minC = Infinity;
+  for (var ki = 0; ki < cells.length; ki++) {
+    minC = Math.min(minC, +cells[ki].split(',')[1]);
+  }
+  if (minC > 0) {
+    cells = cells.map(function (k) {
+      var p = k.split(','); return (+p[0]) + ',' + ((+p[1]) - minC);
+    });
+    for (var ei = 0; ei < equations.length; ei++) {
+      equations[ei].cells = equations[ei].cells.map(function (k) {
+        var p = k.split(','); return (+p[0]) + ',' + ((+p[1]) - minC);
+      });
+    }
+  }
+
+  var maxR = 0, maxC = 0;
+  for (var kj = 0; kj < cells.length; kj++) {
+    var pp = cells[kj].split(',');
+    maxR = Math.max(maxR, +pp[0]);
+    maxC = Math.max(maxC, +pp[1]);
+  }
+
+  return {
+    cells: cells,
+    equations: equations,
+    rows: maxR + 1,
+    cols: maxC + 1,
+    layers: layers,
+    isStacked: true
+  };
+}
+
+/* Givens for stacked layouts: each horizontal equation must be solvable
+   from its own givens alone — so when a layer collapses, the rest stays
+   deducible. Strategy:
+     - Mark every cell as given by default
+     - For each hEq: un-give exactly one cell (the non-vEq-endpoint cell, if any)
+     - Un-give all vEq middle cells (they're filled by deducing from endpoints)
+   Result: each hEq has 2 givens (independently solvable), each vEq has 2 givens
+   at its endpoints + 1 unknown middle (also independently solvable). */
+function pickStackedGivens(layout, puzzle) {
+  var givens = {};
+  for (var i = 0; i < layout.cells.length; i++) givens[layout.cells[i]] = true;
+
+  // Identify cells that are vEq endpoints — they must stay given so adjacent
+  // hEqs aren't dependent on each other through a vEq.
+  var vEndpoints = {};
+  for (var ei = 0; ei < layout.equations.length; ei++) {
+    var eq = layout.equations[ei];
+    if (eq.orientation !== 'v' || eq.cells.length !== 3) continue;
+    vEndpoints[eq.cells[0]] = true;
+    vEndpoints[eq.cells[2]] = true;
+  }
+
+  // For each hEq, pick one cell to NOT give (preferring non-vEq-endpoint cells)
+  for (var ej = 0; ej < layout.equations.length; ej++) {
+    var heq = layout.equations[ej];
+    if (heq.orientation !== 'h' || heq.cells.length !== 3) continue;
+    var candidates = [];
+    for (var c = 0; c < 3; c++) {
+      if (!vEndpoints[heq.cells[c]]) candidates.push(c);
+    }
+    // If all 3 cells are vEq endpoints (rare — only if 2 vEqs from the same hEq),
+    // pick any cell as non-given.
+    if (candidates.length === 0) candidates = [0, 1, 2];
+    var pick = candidates[Math.floor(R() * candidates.length)];
+    delete givens[heq.cells[pick]];
+  }
+
+  // Un-give all vEq middle cells
+  for (var ek = 0; ek < layout.equations.length; ek++) {
+    var veq = layout.equations[ek];
+    if (veq.orientation !== 'v' || veq.cells.length !== 3) continue;
+    delete givens[veq.cells[1]];
+  }
+
+  return givens;
+}
+
+// At least one hEq has its non-given cell at an operand position (not the result).
+function hasBackComputeInStacked(layout, givens) {
+  for (var ei = 0; ei < layout.equations.length; ei++) {
+    var eq = layout.equations[ei];
+    if (eq.orientation !== 'h' || eq.cells.length !== 3) continue;
+    var nonGivenIdx = -1;
+    for (var c = 0; c < 3; c++) {
+      if (!givens[eq.cells[c]]) { nonGivenIdx = c; break; }
+    }
+    if (nonGivenIdx === 0 || nonGivenIdx === 1) return true; // operand → back-compute
+  }
+  return false;
+}
+
+function generateStackedPuzzle(diff, cfg, numLayers) {
+  for (var attempt = 0; attempt < 500; attempt++) {
+    var layout = genArcadeStack(cfg, numLayers);
+    if (!layout) continue;
+    var puzzle = assignValues(layout, cfg);
+    if (!puzzle) continue;
+    // For Tetris-style independent layer collapse, each hEq must be solvable
+    // from its own givens. pickStackedGivens enforces that.
+    var givens = pickStackedGivens(layout, puzzle);
+    if (!givens) continue;
+    // Verify: deducible + uniquely solvable + has at least one back-compute step
+    var ded = isDeducible(layout, puzzle, givens);
+    if (!ded.ok) continue;
+    if (countSolutions(layout, puzzle, givens, 2) !== 1) continue;
+    if (!hasBackComputeInStacked(layout, givens)) continue;
+    var decoys = pickDecoys(layout, puzzle, givens, cfg.decoyCount || 0, cfg);
+    if (!decoys) continue;
+
+    // Bank-supply check
+    var needCounts = {}, bankCounts = {};
+    for (var sci = 0; sci < layout.cells.length; sci++) {
+      var sk = layout.cells[sci];
+      if (!givens[sk]) {
+        var sv = puzzle.values[sk];
+        needCounts[sv] = (needCounts[sv] || 0) + 1;
+        bankCounts[sv] = (bankCounts[sv] || 0) + 1;
+      }
+    }
+    for (var sdi = 0; sdi < decoys.length; sdi++) {
+      bankCounts[decoys[sdi]] = (bankCounts[decoys[sdi]] || 0) + 1;
+    }
+    var bankOk = true;
+    for (var nv in needCounts) {
+      if ((bankCounts[nv] || 0) < needCounts[nv]) { bankOk = false; break; }
+    }
+    if (!bankOk) continue;
+
+    return {
+      layout: layout, puzzle: puzzle, givens: givens, decoys: decoys,
+      difficulty: diff, isStacked: true
+    };
+  }
+  return null;
+}
+
+/* ========================================================================
    GENERATE PUZZLE
 ======================================================================== */
 // Compute the maximum layout dimension that will fit on the current viewport
@@ -1373,6 +1595,17 @@ function generatePuzzle(diff, seedFn) {
   if (seedFn) R = seedFn;
   else R = Math.random;
   var cfg = DIFFICULTY[diff];
+
+  // Arcade Tetris mode: stacked layout instead of irregular crossword.
+  var arcadeMode = !!(state && state.settings && state.settings.arcadeMode);
+  if (arcadeMode) {
+    var numLayers = diff === 'easy' ? 4 : (diff === 'medium' ? 5 : 6);
+    var stacked = generateStackedPuzzle(diff, cfg, numLayers);
+    R = Math.random;
+    if (stacked) return stacked;
+    // Fall through to standard generation if stacked failed (rare)
+  }
+
   // Override maxLayoutDim with viewport-aware computation.
   // Don't go below the difficulty's hard-coded minimum (some difficulties NEED room for their equations).
   var minLayoutDim = diff === 'easy' ? 5 : (diff === 'medium' ? 6 : 7);
@@ -1888,17 +2121,283 @@ function detectEquationClears(justFilledKey) {
   flashScoreBump();
 
   if (state.settings.arcadeMode) {
-    // After the collapse animation, remove the cleared equations from the layout
-    // and spawn replacement equations. This keeps the puzzle alive.
     setTimeout(function () {
-      for (var i = 0; i < newlyCleared.length; i++) {
-        replaceArcadeEquation(newlyCleared[i]);
+      if (state.data && state.data.isStacked) {
+        // Tetris-style: when a layer's horizontal eqs are all cleared, the layer
+        // collapses, everything above drops, a fresh layer spawns at top.
+        applyStackedClears();
+      } else {
+        // Legacy per-equation arcade replacement (fallback if stacked gen failed).
+        for (var i = 0; i < newlyCleared.length; i++) {
+          replaceArcadeEquation(newlyCleared[i]);
+        }
       }
       render();
     }, 900);
   } else {
     setTimeout(render, 900);
   }
+}
+
+/* ========================================================================
+   STACKED ARCADE: layer collapse, gravity, new-top spawn
+======================================================================== */
+function applyStackedClears() {
+  // Process cleared layers one at a time, bottom-most first. After each
+  // collapse, re-scan since rows shifted and indices changed.
+  for (var safety = 0; safety < 50; safety++) {
+    var p = state.data;
+    if (!p || !p.layout.layers) return;
+    var idx = -1, maxRow = -1;
+    for (var li = 0; li < p.layout.layers.length; li++) {
+      var layer = p.layout.layers[li];
+      if (!layer || !layer.hEqIndices.length) continue;
+      var allCleared = true;
+      for (var hi = 0; hi < layer.hEqIndices.length; hi++) {
+        if (!state.clearedEqs[layer.hEqIndices[hi]]) { allCleared = false; break; }
+      }
+      if (allCleared && layer.row > maxRow) { idx = li; maxRow = layer.row; }
+    }
+    if (idx === -1) return;
+    collapseOneLayer(idx);
+  }
+}
+
+function collapseOneLayer(layerIdx) {
+  var p = state.data;
+  var layer = p.layout.layers[layerIdx];
+  if (!layer) return;
+
+  // Cells to remove: hEq cells + connector cells of vEqs going up from this layer
+  var removeSet = {};
+  for (var hi = 0; hi < layer.hEqIndices.length; hi++) {
+    var hEq = p.layout.equations[layer.hEqIndices[hi]];
+    if (!hEq.cells) continue;
+    for (var c = 0; c < hEq.cells.length; c++) removeSet[hEq.cells[c]] = true;
+  }
+  for (var vi = 0; vi < layer.vEqIndicesUp.length; vi++) {
+    var vEq = p.layout.equations[layer.vEqIndicesUp[vi]];
+    if (vEq.cells && vEq.cells[1]) removeSet[vEq.cells[1]] = true;
+  }
+
+  // Remove from cells, values, givens, placed, settled
+  p.layout.cells = p.layout.cells.filter(function (k) { return !removeSet[k]; });
+  for (var rk in removeSet) {
+    delete p.puzzle.values[rk];
+    delete p.givens[rk];
+    delete state.placed[rk];
+    delete state.settledCells[rk];
+  }
+
+  // Mark removed equations as empty (so other code skips them)
+  for (var hi2 = 0; hi2 < layer.hEqIndices.length; hi2++) {
+    p.layout.equations[layer.hEqIndices[hi2]] = { cells: [], orientation: 'h' };
+    p.puzzle.eqOps[layer.hEqIndices[hi2]] = [];
+    delete state.clearedEqs[layer.hEqIndices[hi2]];
+  }
+  for (var vi2 = 0; vi2 < layer.vEqIndicesUp.length; vi2++) {
+    p.layout.equations[layer.vEqIndicesUp[vi2]] = { cells: [], orientation: 'v' };
+    p.puzzle.eqOps[layer.vEqIndicesUp[vi2]] = [];
+  }
+
+  var clearedRow = layer.row;
+
+  // Drop layer from layers metadata
+  p.layout.layers.splice(layerIdx, 1);
+
+  // Apply gravity: shift cells ABOVE the cleared row DOWN by 2.
+  // Cells at or below the cleared row stay in place.
+  shiftCellsAboveRow(clearedRow, 2);
+
+  // Update layers metadata rows for layers above the cleared row
+  for (var lk = 0; lk < p.layout.layers.length; lk++) {
+    if (p.layout.layers[lk].row < clearedRow) p.layout.layers[lk].row += 2;
+  }
+
+  // Spawn a fresh layer at the top
+  spawnNewTopLayer();
+
+  recomputeBounds(p.layout);
+  state.visual = buildVisualGrid(p.layout, p.puzzle);
+}
+
+function shiftCellsAboveRow(thresholdRow, delta) {
+  var p = state.data;
+  function shiftKey(k) {
+    var pp = k.split(',');
+    var r = +pp[0];
+    if (r >= thresholdRow) return k;
+    return (r + delta) + ',' + (+pp[1]);
+  }
+  p.layout.cells = p.layout.cells.map(shiftKey);
+  for (var ei = 0; ei < p.layout.equations.length; ei++) {
+    var eq = p.layout.equations[ei];
+    if (!eq.cells || eq.cells.length === 0) continue;
+    eq.cells = eq.cells.map(shiftKey);
+  }
+  var newValues = {}, newGivens = {}, newPlaced = {}, newSettled = {};
+  for (var vk in p.puzzle.values) newValues[shiftKey(vk)] = p.puzzle.values[vk];
+  for (var gk in p.givens) if (p.givens[gk]) newGivens[shiftKey(gk)] = true;
+  for (var pk in state.placed) if (state.placed[pk] != null) newPlaced[shiftKey(pk)] = state.placed[pk];
+  for (var sk in state.settledCells) if (state.settledCells[sk]) newSettled[shiftKey(sk)] = true;
+  p.puzzle.values = newValues;
+  p.givens = newGivens;
+  state.placed = newPlaced;
+  state.settledCells = newSettled;
+}
+
+function spawnNewTopLayer() {
+  var p = state.data;
+  if (!p.layout.layers.length) return;
+
+  // After gravity, the existing top layer is at row 2 (was at row 0 before gravity)
+  // Sort layers by row ascending; topmost is at smallest row
+  p.layout.layers.sort(function (a, b) { return a.row - b.row; });
+  var topLayer = p.layout.layers[0];
+  if (topLayer.row !== 2) return; // unexpected — bail out, no spawn
+
+  var topHEq = p.layout.equations[topLayer.hEqIndices[0]];
+  if (!topHEq.cells || !topHEq.cells.length) return;
+
+  // Pick connector column from the top hEq cells. Avoid the column where
+  // there's already a cell at row 3 (would create a 4+ chain at that column).
+  var topHCols = topHEq.cells.map(function (k) { return +k.split(',')[1]; });
+  var occupiedAtRow3 = {};
+  for (var ci = 0; ci < p.layout.cells.length; ci++) {
+    var pp = p.layout.cells[ci].split(',');
+    if (+pp[0] === 3) occupiedAtRow3[+pp[1]] = true;
+  }
+  var connectorOptions = topHCols.filter(function (c) { return !occupiedAtRow3[c]; });
+  if (!connectorOptions.length) connectorOptions = topHCols; // fall back if no clean choice
+  var connectorCol = connectorOptions[Math.floor(Math.random() * connectorOptions.length)];
+
+  // Where does connectorCol sit within the new hEq? Random {0,1,2}
+  var hOffset = Math.floor(Math.random() * 3);
+  var hStartCol = connectorCol - hOffset;
+
+  // Shift everything right if hStartCol < 0
+  if (hStartCol < 0) {
+    var shift = -hStartCol;
+    function shiftRight(k) {
+      var pp = k.split(','); return (+pp[0]) + ',' + ((+pp[1]) + shift);
+    }
+    p.layout.cells = p.layout.cells.map(shiftRight);
+    for (var eii = 0; eii < p.layout.equations.length; eii++) {
+      var eq = p.layout.equations[eii];
+      if (!eq.cells || !eq.cells.length) continue;
+      eq.cells = eq.cells.map(shiftRight);
+    }
+    var nv = {}, ng = {}, np = {}, ns = {};
+    for (var vk in p.puzzle.values) nv[shiftRight(vk)] = p.puzzle.values[vk];
+    for (var gk in p.givens) if (p.givens[gk]) ng[shiftRight(gk)] = true;
+    for (var pk in state.placed) if (state.placed[pk] != null) np[shiftRight(pk)] = state.placed[pk];
+    for (var sk in state.settledCells) if (state.settledCells[sk]) ns[shiftRight(sk)] = true;
+    p.puzzle.values = nv; p.givens = ng; state.placed = np; state.settledCells = ns;
+    connectorCol += shift;
+    hStartCol = 0;
+  }
+
+  // Anchor cell (bottom of new vEq) is in existing top hEq
+  var anchorCellKey = '2,' + connectorCol;
+  if (p.layout.cells.indexOf(anchorCellKey) === -1) return;
+  var anchorValue = p.puzzle.values[anchorCellKey];
+  if (anchorValue == null) return;
+
+  // Pick op + values for the new vEq: top op middle = bottom (= anchorValue)
+  var cfg = DIFFICULTY[state.difficulty];
+  var vop = null;
+  for (var va = 0; va < 200; va++) {
+    var v_op = (Math.random() < cfg.minusChance) ? '−' : '+';
+    var v_top = 1 + Math.floor(Math.random() * Math.min(cfg.poolMax, cfg.maxNum - 1));
+    var v_mid;
+    if (v_op === '+') v_mid = anchorValue - v_top;
+    else v_mid = v_top - anchorValue;
+    if (!Number.isInteger(v_mid) || v_mid < 1 || v_mid > cfg.maxNum) continue;
+    if (v_top < 1 || v_top > cfg.maxNum) continue;
+    vop = { op: v_op, top: v_top, mid: v_mid };
+    break;
+  }
+  if (!vop) return;
+
+  // Pick op + values for new hEq, with cell at hOffset position = vop.top
+  var hop = null;
+  for (var ha = 0; ha < 200; ha++) {
+    var h_op = (Math.random() < cfg.minusChance) ? '−' : '+';
+    var v0, v1, v2;
+    var rand = function () { return 1 + Math.floor(Math.random() * Math.min(cfg.poolMax, cfg.maxNum - 1)); };
+    if (hOffset === 0) {
+      v0 = vop.top; v1 = rand();
+      v2 = (h_op === '+') ? v0 + v1 : v0 - v1;
+    } else if (hOffset === 1) {
+      v1 = vop.top; v0 = rand();
+      v2 = (h_op === '+') ? v0 + v1 : v0 - v1;
+    } else {
+      v2 = vop.top; v0 = rand();
+      v1 = (h_op === '+') ? v2 - v0 : v0 - v2;
+    }
+    var ok = [v0, v1, v2].every(function (v) { return Number.isInteger(v) && v >= 1 && v <= cfg.maxNum; });
+    if (!ok) continue;
+    hop = { op: h_op, vals: [v0, v1, v2] };
+    break;
+  }
+  if (!hop) return;
+
+  // Commit cells + values
+  var newHCells = [];
+  for (var hi3 = 0; hi3 < 3; hi3++) {
+    var k = '0,' + (hStartCol + hi3);
+    newHCells.push(k);
+    p.layout.cells.push(k);
+    p.puzzle.values[k] = hop.vals[hi3];
+  }
+  var connectorCellKey = '1,' + connectorCol;
+  p.layout.cells.push(connectorCellKey);
+  p.puzzle.values[connectorCellKey] = vop.mid;
+
+  // Add equations
+  var newHEqIdx = p.layout.equations.length;
+  p.layout.equations.push({ cells: newHCells, orientation: 'h' });
+  p.puzzle.eqOps.push([hop.op]);
+  var newVEqIdx = p.layout.equations.length;
+  p.layout.equations.push({
+    cells: ['0,' + connectorCol, connectorCellKey, anchorCellKey],
+    orientation: 'v'
+  });
+  p.puzzle.eqOps.push([vop.op]);
+
+  // Givens follow the stacked-puzzle convention: vEq endpoints (top + bottom)
+  // are given so each hEq is independently solvable. vEq middle is NOT given.
+  // - newHCells[hOffset] = top of vEq → given (vEq endpoint)
+  // - one of the OTHER hEq cells → given (so hEq has 2 givens)
+  // - the remaining hEq cell + connector cell → not given (filled from bank)
+  p.givens[newHCells[hOffset]] = true;
+  var otherIndices = [0, 1, 2].filter(function (i) { return i !== hOffset; });
+  var givenOtherIdx = otherIndices[Math.floor(Math.random() * otherIndices.length)];
+  p.givens[newHCells[givenOtherIdx]] = true;
+  // Connector cell (vEq middle) intentionally NOT given.
+
+  // Bank tiles for the 2 non-given new cells
+  var nonGivenHIdx = otherIndices.filter(function (i) { return i !== givenOtherIdx; })[0];
+  state.bank.push(hop.vals[nonGivenHIdx]);
+  state.bank.push(vop.mid);
+  state.bank.sort(function (a, b) { return a - b; });
+
+  // Layer metadata: new top has empty vEqIndicesUp; existing top (now at row 2)
+  // gets the new vEq added to its vEqIndicesUp.
+  p.layout.layers.unshift({ row: 0, hEqIndices: [newHEqIdx], vEqIndicesUp: [] });
+  for (var lk = 1; lk < p.layout.layers.length; lk++) {
+    if (p.layout.layers[lk].row === 2) {
+      p.layout.layers[lk].vEqIndicesUp.push(newVEqIdx);
+      break;
+    }
+  }
+
+  // Slide-in animation tags
+  state.arcadeIncomingCells = state.arcadeIncomingCells || {};
+  for (var ic = 0; ic < newHCells.length; ic++) {
+    state.arcadeIncomingCells[newHCells[ic]] = { fromX: '0px', fromY: '-60px' };
+  }
+  state.arcadeIncomingCells[connectorCellKey] = { fromX: '0px', fromY: '-60px' };
 }
 
 /* ARCADE: replace a solved equation with a fresh one anchored to a cell on the grid.

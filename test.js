@@ -19,7 +19,8 @@ const SCRIPT_BODY = (function () {
   const m = HTML.match(/<script>([\s\S]*?)<\/script>/);
   if (!m) throw new Error('crossmath.html: <script> tag not found');
   const exposeList = [
-    'generatePuzzle', 'genLayout', 'assignValues', 'pickGivens', 'pickDecoys',
+    'generatePuzzle', 'genLayout', 'genArcadeStack', 'generateStackedPuzzle',
+    'assignValues', 'pickGivens', 'pickDecoys',
     'isDeducible', 'countSolutions',
     'applyOp', 'applyChain', 'backCompute',
     'seedRng', 'dailySeed',
@@ -27,6 +28,7 @@ const SCRIPT_BODY = (function () {
     'state', 'render', 'startPuzzle',
     'replaceArcadeEquation', 'simulateAndValidateArcadeReplacement',
     'detectEquationClears',
+    'applyStackedClears', 'collapseOneLayer', 'spawnNewTopLayer',
     'DIFFICULTY'
   ];
   const replaced = m[1].replace(
@@ -557,8 +559,179 @@ test('arcade replacement loop — 50 moves keep state deducible & consistent', (
 });
 
 /* ==========================================================================
-   8. JSDOM RENDERING — grid fits within multiple viewports
+   7b. STACKED ARCADE (v44) — Tetris-style layered puzzle
 ========================================================================== */
+test('stacked arcade — layout has the right structure', () => {
+  const exp = loadStub();
+  exp.state.settings.scoreMode = true;
+  exp.state.settings.arcadeMode = true;
+  for (let s = 0; s < 10; s++) {
+    const data = exp.generatePuzzle('easy');
+    assert.ok(data, `sample ${s}: generation failed`);
+    assert.ok(data.isStacked, `sample ${s}: not stacked`);
+    assert.ok(data.layout.layers && data.layout.layers.length >= 4,
+      `sample ${s}: expected ≥4 layers, got ${data.layout.layers && data.layout.layers.length}`);
+    // Each layer has ≥1 horizontal eq
+    for (const layer of data.layout.layers) {
+      assert.ok(layer.hEqIndices.length >= 1, 'layer missing hEqs');
+    }
+    // Top layer (smallest row) has no vEqIndicesUp
+    const sorted = data.layout.layers.slice().sort((a, b) => a.row - b.row);
+    assert.equal(sorted[0].vEqIndicesUp.length, 0, 'top layer should not have upward vEq');
+    // Layer rows are even and ascending by 2
+    for (let i = 1; i < sorted.length; i++) {
+      assert.equal(sorted[i].row - sorted[i - 1].row, 2,
+        `layers not stacked at row+2 spacing`);
+    }
+  }
+});
+
+test('stacked arcade — collapse + spawn keeps puzzle deducible', () => {
+  const exp = loadStub();
+  const { generatePuzzle, isDeducible, state } = exp;
+  state.settings.scoreMode = true;
+  state.settings.arcadeMode = true;
+
+  const data = generatePuzzle('easy');
+  assert.ok(data && data.isStacked, 'stacked generation failed');
+  state.data = data;
+  state.bank = (() => {
+    const b = [];
+    for (const k of data.layout.cells) if (!data.givens[k]) b.push(data.puzzle.values[k]);
+    if (data.decoys) for (const d of data.decoys) b.push(d);
+    return b.sort((x, y) => x - y);
+  })();
+  state.placed = {};
+  state.clearedEqs = {};
+  state.settledCells = {};
+
+  const initialLayerCount = data.layout.layers.length;
+
+  // Solve the bottom layer's horizontal eq, then trigger collapse
+  // Find bottom layer (largest row)
+  const bottomLayer = data.layout.layers.slice().sort((a, b) => b.row - a.row)[0];
+  const bottomEqIdx = bottomLayer.hEqIndices[0];
+  const bottomEq = data.layout.equations[bottomEqIdx];
+  for (const k of bottomEq.cells) {
+    if (!data.givens[k]) state.placed[k] = data.puzzle.values[k];
+  }
+  state.clearedEqs[bottomEqIdx] = true;
+
+  // Trigger collapse synchronously (skip the 900ms wait)
+  exp.applyStackedClears();
+
+  // After collapse: layer count should be the same (we cleared one + spawned one),
+  // OR one less if spawn failed.
+  assert.ok(data.layout.layers.length === initialLayerCount ||
+            data.layout.layers.length === initialLayerCount - 1,
+    `expected layer count ${initialLayerCount} or ${initialLayerCount - 1}, got ${data.layout.layers.length}`);
+
+  // Verify the puzzle is still deducible from current state (givens + placed)
+  const knownGivens = {};
+  for (const k in data.givens) if (data.givens[k]) knownGivens[k] = true;
+  for (const k in state.placed) if (state.placed[k] != null) knownGivens[k] = true;
+  const activeEqs = [], activeOps = [];
+  for (let i = 0; i < data.layout.equations.length; i++) {
+    const e = data.layout.equations[i];
+    if (!e.cells || e.cells.length === 0) continue;
+    activeEqs.push(e);
+    activeOps.push(data.puzzle.eqOps[i]);
+  }
+  if (activeEqs.length > 0) {
+    const ded = isDeducible(
+      { cells: data.layout.cells, equations: activeEqs },
+      { values: data.puzzle.values, eqOps: activeOps },
+      knownGivens
+    );
+    assert.ok(ded.ok, `puzzle not deducible after collapse + spawn (depth=${ded.depth})`);
+  }
+
+  // Defensive: clear state.data so deferred renders from this test don't crash
+  state.data = null;
+});
+
+test('stacked arcade — 15 collapse cycles stay deducible & bank-supplied', () => {
+  const exp = loadStub();
+  const { generatePuzzle, isDeducible, state } = exp;
+  state.settings.scoreMode = true;
+  state.settings.arcadeMode = true;
+
+  const data = generatePuzzle('easy');
+  assert.ok(data && data.isStacked, 'stacked generation failed');
+  state.data = data;
+  state.bank = (() => {
+    const b = [];
+    for (const k of data.layout.cells) if (!data.givens[k]) b.push(data.puzzle.values[k]);
+    if (data.decoys) for (const d of data.decoys) b.push(d);
+    return b.sort((x, y) => x - y);
+  })();
+  state.placed = {};
+  state.clearedEqs = {};
+  state.settledCells = {};
+
+  let cyclesCompleted = 0;
+  for (let cycle = 0; cycle < 15; cycle++) {
+    // Pick the bottom-most layer with an active hEq
+    const sorted = data.layout.layers.slice().sort((a, b) => b.row - a.row);
+    let bottomLayer = null;
+    for (const l of sorted) {
+      if (l.hEqIndices.length === 0) continue;
+      const eq = data.layout.equations[l.hEqIndices[0]];
+      if (eq.cells && eq.cells.length === 3) { bottomLayer = l; break; }
+    }
+    if (!bottomLayer) break;
+    const eqIdx = bottomLayer.hEqIndices[0];
+    const eq = data.layout.equations[eqIdx];
+
+    // Place correct values for the non-given cells in this hEq
+    for (const k of eq.cells) {
+      if (!data.givens[k] && state.placed[k] == null) {
+        state.placed[k] = data.puzzle.values[k];
+      }
+    }
+    state.clearedEqs[eqIdx] = true;
+    exp.applyStackedClears();
+    cyclesCompleted++;
+
+    // After collapse + spawn: verify deducibility from current known state
+    const knownGivens = {};
+    for (const k in data.givens) if (data.givens[k]) knownGivens[k] = true;
+    for (const k in state.placed) if (state.placed[k] != null) knownGivens[k] = true;
+    const activeEqs = [], activeOps = [];
+    for (let i = 0; i < data.layout.equations.length; i++) {
+      const e = data.layout.equations[i];
+      if (!e.cells || e.cells.length === 0) continue;
+      activeEqs.push(e);
+      activeOps.push(data.puzzle.eqOps[i]);
+    }
+    if (activeEqs.length === 0) break;
+    const ded = isDeducible(
+      { cells: data.layout.cells, equations: activeEqs },
+      { values: data.puzzle.values, eqOps: activeOps },
+      knownGivens
+    );
+    assert.ok(ded.ok,
+      `cycle ${cycle}: not deducible (depth=${ded.depth}, layers=${data.layout.layers.length})`);
+
+    // Bank-supply: every non-known active cell must have a tile available
+    const need = {}, have = {};
+    for (const k of data.layout.cells) {
+      if (!knownGivens[k]) need[data.puzzle.values[k]] = (need[data.puzzle.values[k]] || 0) + 1;
+    }
+    for (const v of state.bank) have[v] = (have[v] || 0) + 1;
+    for (const k in state.placed) {
+      if (state.placed[k] != null && have[state.placed[k]]) have[state.placed[k]]--;
+    }
+    for (const v in need) {
+      assert.ok((have[v] || 0) >= need[v],
+        `cycle ${cycle}: bank short of value ${v} (need ${need[v]}, have ${have[v] || 0})`);
+    }
+  }
+
+  assert.ok(cyclesCompleted >= 5,
+    `expected ≥5 collapse cycles, got ${cyclesCompleted}`);
+  state.data = null;
+});
 const VIEWPORTS = [
   { w: 360, h: 640, label: '360×640' },
   { w: 375, h: 667, label: '375×667' },
