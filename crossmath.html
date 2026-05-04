@@ -1,0 +1,3439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Crossmath</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#FBF6E8">
+<meta name="build" content="v43-forgiving-drop">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='42' fill='%23FBF6E8'/></svg>">
+
+<!-- PWA manifest inline as data URI -->
+<link rel="manifest" href='data:application/json;charset=UTF-8,{"name":"Crossmath","short_name":"Crossmath","display":"standalone","start_url":".","background_color":"%23FBF6E8","theme_color":"%23FBF6E8","icons":[{"src":"data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 192 192%22><rect width=%22192%22 height=%22192%22 rx=%2242%22 fill=%22%23FBF6E8%22/></svg>","sizes":"192x192","type":"image/svg+xml"}]}'>
+
+<style>
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+:root {
+  --bg-page: #eef2f7;
+  --bg-grid: #FBF6E8;
+  --cell-empty: #fffdf3;
+  --cell-filled: #ffffff;
+  --cell-given: #f3deaa;
+  --cell-given-text: #2e2410;
+  --ink: #1a2332;
+  --ink-soft: #57636f;
+  --accent-red: #c1432d;
+  --accent-green: #6a8e3d;
+  --accent-gold: #c89849;
+  --eq-correct-bg: #d6e8b4;
+  --eq-correct-text: #2d4710;
+  --eq-correct-border: #6a8e3d;
+  --eq-wrong-bg: #f7caca;
+  --eq-wrong-text: #7a1f1f;
+  --eq-wrong-border: #c1432d;
+  --bank-bg: rgba(80,60,20,0.06);
+  --bank-border: rgba(120,90,30,0.2);
+  --hint-bg: #fff3c4;
+  --hint-border: #c89849;
+  --hint-text: #5a3f11;
+  --eq-related: rgba(58, 130, 200, 0.18);
+  --eq-related-border: rgba(58, 130, 200, 0.55);
+}
+html.dark {
+  --bg-page: #14181f;
+  --bg-grid: #1f242b;
+  --cell-empty: #2a2f37;
+  --cell-filled: #3a4049;
+  --cell-given: #4a3f1d;
+  --cell-given-text: #e9d3a3;
+  --ink: #e8ecf2;
+  --ink-soft: #98a3b0;
+  --accent-red: #ff6b56;
+  --accent-green: #95c662;
+  --accent-gold: #e0b566;
+  --eq-correct-bg: #2c4520;
+  --eq-correct-text: #c4e69a;
+  --eq-correct-border: #6a8e3d;
+  --eq-wrong-bg: #5b1f1f;
+  --eq-wrong-text: #ffcccc;
+  --eq-wrong-border: #c1432d;
+  --bank-bg: rgba(255,235,180,0.05);
+  --bank-border: rgba(200,180,120,0.15);
+  --hint-bg: #4a3a14;
+  --hint-border: #c89849;
+  --hint-text: #ffe4a8;
+  --eq-related: rgba(102, 178, 240, 0.20);
+  --eq-related-border: rgba(102, 178, 240, 0.55);
+}
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100vh; height: 100dvh;
+  overflow: hidden; overscroll-behavior: none;
+  background: var(--bg-page);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--ink);
+  -webkit-user-select: none; user-select: none;
+  touch-action: manipulation;
+  transition: background 0.3s, color 0.3s;
+}
+#app {
+  height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 6px 6px 8px;
+  overflow: hidden;
+}
+
+/* Top bar */
+.top-bar {
+  width: 100%; max-width: 480px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 4px 4px; gap: 8px;
+  flex-shrink: 0;
+}
+.top-bar-side { display: flex; gap: 6px; align-items: center; flex: 1; }
+.top-bar-side.right { justify-content: flex-end; }
+.icon-btn {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1.5px solid var(--ink-soft); color: var(--ink-soft);
+  border-radius: 50%; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 700;
+  transition: transform 0.15s, color 0.15s, border-color 0.15s;
+  padding: 0;
+}
+.icon-btn:disabled { opacity: 0.3; cursor: default; }
+.icon-btn:not(:disabled):hover { transform: scale(1.1); color: var(--ink); border-color: var(--ink); }
+.icon-btn:not(:disabled):active { transform: scale(0.92); }
+.timer-display {
+  font-family: Georgia, serif;
+  font-size: 14px; font-weight: 700;
+  color: var(--ink-soft);
+  letter-spacing: 0.05em;
+  min-width: 50px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Difficulty pills */
+.diff-row { display: flex; gap: 4px; margin-bottom: 4px; flex-shrink: 0; }
+.diff-pill {
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  background: transparent; border: 1.5px solid;
+  cursor: pointer; font-family: inherit;
+  transition: transform 0.15s;
+}
+.diff-pill:hover { transform: scale(1.05); }
+.diff-pill:active { transform: scale(0.95); }
+.daily-pill {
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  background: transparent; cursor: pointer; font-family: inherit;
+  border: 1.5px solid var(--accent-gold); color: var(--accent-gold);
+  transition: transform 0.15s;
+}
+.daily-pill.active {
+  background: var(--accent-gold); color: var(--bg-grid);
+  box-shadow: 0 3px 0 rgba(200,152,73,0.4);
+}
+.daily-pill:hover { transform: scale(1.05); }
+
+/* Title */
+.title-area { text-align: center; margin-bottom: 4px; flex-shrink: 0; }
+.title {
+  font-family: Georgia, "Hoefler Text", serif;
+  font-size: 18px; font-weight: 900;
+  color: var(--ink); letter-spacing: -0.02em; margin: 0;
+}
+.subtitle {
+  margin-top: 1px;
+  font-size: 9px;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  cursor: pointer;
+}
+.streak-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 9px; padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-gold); color: var(--bg-grid);
+  font-weight: 700;
+}
+.loading {
+  font-size: 11px; color: var(--ink-soft);
+  letter-spacing: 0.2em; text-transform: uppercase;
+  padding: 60px 0;
+}
+
+/* Grid */
+.grid-wrap {
+  position: relative; padding: 2px;
+  flex: 1 1 auto;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 8px;
+  min-height: 0; width: 100%;
+  overflow: hidden;
+}
+.grid-wrap.shaking { animation: shake 0.45s ease; }
+.grid {
+  display: grid; gap: 0;
+  transform-origin: center center;
+}
+.cell {
+  display: flex; align-items: center; justify-content: center;
+  font-family: Georgia, "Hoefler Text", serif;
+  font-weight: 800;
+  transition: background 0.18s, color 0.18s, border-color 0.18s, transform 0.15s;
+}
+.cell.num {
+  font-size: var(--font-main, 16px);
+  border: 1.5px solid var(--ink);
+  position: relative;
+}
+.cell.num.given { background: var(--cell-given); color: var(--cell-given-text); }
+.cell.num.empty { background: var(--cell-empty); color: var(--ink); cursor: pointer; touch-action: none; }
+.cell.num.filled { background: var(--cell-filled); color: var(--ink); cursor: grab; touch-action: none; }
+.cell.num.filled:active { cursor: grabbing; }
+.cell.num.selected { box-shadow: inset 0 0 0 2.5px var(--accent-red); z-index: 2; }
+.cell.num.related {
+  background: var(--eq-related) !important;
+  box-shadow: inset 0 0 0 2px var(--eq-related-border);
+}
+.cell.num.eq-correct {
+  background: var(--eq-correct-bg) !important;
+  color: var(--eq-correct-text) !important;
+  border-color: var(--eq-correct-border) !important;
+}
+.cell.num.eq-wrong {
+  background: var(--eq-wrong-bg) !important;
+  color: var(--eq-wrong-text) !important;
+  border-color: var(--eq-wrong-border) !important;
+}
+.cell.num.solved {
+  background: var(--eq-correct-bg) !important;
+  color: var(--eq-correct-text) !important;
+  border-color: var(--eq-correct-border) !important;
+}
+.cell.num.dragging-from { opacity: 0.25; }
+.cell.num.drop-target {
+  background: #ffe4dc !important;
+  border: 2.5px solid var(--accent-red) !important;
+  transform: scale(1.18);
+  z-index: 10;
+  box-shadow:
+    inset 0 0 0 2px var(--accent-red),
+    0 0 0 4px rgba(193,67,45,0.25),
+    0 4px 14px rgba(193,67,45,0.35);
+  animation: drop-pulse 0.6s ease-in-out infinite;
+}
+@keyframes drop-pulse {
+  0%, 100% {
+    box-shadow: inset 0 0 0 2px var(--accent-red), 0 0 0 4px rgba(193,67,45,0.25), 0 4px 14px rgba(193,67,45,0.35);
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px var(--accent-red), 0 0 0 8px rgba(193,67,45,0.15), 0 4px 18px rgba(193,67,45,0.5);
+  }
+}
+.cell.num.pop { animation: pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.cell.op {
+  font-size: var(--font-op, 14px); font-weight: 900; color: var(--ink);
+  background: transparent;
+}
+.cell.op.minus { color: var(--accent-red); }
+.cell.op.multiply { color: var(--accent-gold); }
+.cell.eq {
+  font-size: var(--font-op, 13px); font-weight: 900; color: var(--ink);
+  background: transparent;
+}
+
+/* Bank — horizontally scrollable, consolidated by value */
+.bank-wrap {
+  margin-top: 6px; padding: 5px 8px;
+  background: var(--bank-bg);
+  border: 1.5px solid var(--bank-border);
+  border-radius: 12px;
+  display: flex; flex-wrap: wrap; gap: 4px;
+  width: 100%; max-width: 360px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.bank-scroll-container {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+.bank-wrap::-webkit-scrollbar { display: none; }
+.bank-tile {
+  position: relative;
+  min-width: 34px; flex-shrink: 0;
+  width: 34px; height: 34px;
+  font-family: Georgia, serif;
+  font-size: 16px; font-weight: 800;
+  color: var(--ink); background: var(--cell-filled);
+  border: 2px solid var(--ink); border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 0 var(--ink), 0 4px 8px -2px rgba(0,0,0,0.15);
+  cursor: grab; touch-action: none;
+  transition: transform 0.15s;
+}
+.bank-tile:hover { transform: scale(1.1); }
+.bank-tile:active { cursor: grabbing; }
+.bank-tile.exhausted {
+  opacity: 0.22; cursor: default; transform: scale(0.9);
+  box-shadow: none; background: var(--cell-given);
+  color: var(--ink-soft); border-color: var(--bank-border);
+}
+.bank-tile .count-badge {
+  position: absolute;
+  top: -5px; right: -5px;
+  background: var(--ink); color: var(--bg-grid);
+  font-size: 10px; font-weight: 800;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--bg-grid);
+}
+.bank-tile.hint-highlight {
+  background: var(--hint-bg);
+  border-color: var(--hint-border);
+  color: var(--hint-text);
+  animation: hint-pulse 1.0s ease-in-out infinite;
+}
+.bank-tile.reject {
+  animation: bank-reject 0.32s ease;
+}
+.action-btn.reject {
+  animation: bank-reject 0.32s ease;
+}
+@keyframes bank-reject {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+@keyframes hint-pulse {
+  0%, 100% {
+    box-shadow: 0 2px 0 var(--hint-border), 0 0 0 0 rgba(200,152,73,0.4), 0 4px 8px -2px rgba(0,0,0,0.15);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 2px 0 var(--hint-border), 0 0 0 8px rgba(200,152,73,0), 0 4px 12px -2px rgba(200,152,73,0.4);
+    transform: scale(1.12);
+  }
+}
+
+/* Drag ghost */
+.drag-ghost {
+  position: fixed; z-index: 1000; pointer-events: none;
+  width: 36px; height: 36px;
+  font-family: Georgia, serif;
+  font-size: 17px; font-weight: 800; color: var(--ink);
+  background: var(--cell-filled); border: 2px solid var(--ink); border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  transform: translate(-50%, -50%) scale(1.1) rotate(-3deg);
+  will-change: transform, left, top;
+}
+
+/* Actions */
+.actions {
+  margin-top: 6px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  min-height: 32px; flex-shrink: 0;
+}
+.action-row { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.action-btn {
+  padding: 4px 9px; background: transparent; border: none;
+  cursor: pointer; font-size: 9px;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-soft); font-family: inherit; border-radius: 999px;
+  transition: color 0.15s, transform 0.1s;
+}
+.action-btn:disabled { opacity: 0.4; cursor: default; }
+.action-btn:not(:disabled):active { transform: scale(0.93); }
+.action-btn.hint { font-weight: 700; }
+.action-btn.danger { color: var(--accent-red); font-weight: 700; }
+
+.build-footer {
+  margin-top: 4px;
+  text-align: center;
+  font-size: 8px;
+  letter-spacing: 0.15em;
+  color: var(--ink-soft);
+  opacity: 0.5;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  flex-shrink: 0;
+}
+
+/* Solved screen */
+.solved-overlay {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(20,24,31,0.45);
+  display: flex; align-items: center; justify-content: center;
+  animation: fade-in 0.4s ease;
+  backdrop-filter: blur(2px);
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.trophy-card {
+  background: var(--bg-grid); border: 3px solid var(--accent-green);
+  border-radius: 18px;
+  padding: 22px 28px;
+  text-align: center;
+  max-width: 320px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+  animation: trophy-rise 0.55s cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+@keyframes trophy-rise {
+  from { transform: translateY(40px) scale(0.8); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+.trophy-icon { font-size: 56px; line-height: 1; margin-bottom: 6px; }
+.trophy-text {
+  font-family: Georgia, serif;
+  font-size: 26px; font-weight: 800; color: var(--accent-green);
+  margin-bottom: 4px;
+}
+.trophy-stats {
+  font-size: 11px; color: var(--ink-soft);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.trophy-stats strong { color: var(--ink); font-size: 13px; }
+.next-btn {
+  padding: 9px 22px;
+  font-family: Georgia, serif;
+  font-size: 14px; font-weight: 700;
+  background: var(--ink); color: var(--bg-grid);
+  border: none; border-radius: 999px; cursor: pointer;
+  margin-right: 4px;
+}
+.secondary-btn {
+  padding: 9px 18px;
+  font-family: inherit;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  background: transparent; color: var(--ink-soft);
+  border: 1.5px solid var(--ink-soft);
+  border-radius: 999px; cursor: pointer;
+}
+
+/* Modals */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 8000;
+  background: rgba(20,24,31,0.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(2px);
+  animation: fade-in 0.3s ease;
+}
+.modal {
+  background: var(--bg-grid);
+  border: 2px solid var(--ink-soft);
+  border-radius: 16px;
+  padding: 18px 22px;
+  max-width: 360px; width: 100%;
+  max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+}
+.modal h2 {
+  margin: 0 0 12px;
+  font-family: Georgia, serif;
+  font-size: 18px; font-weight: 800; color: var(--ink);
+}
+.modal .row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--bank-border);
+}
+.modal .row:last-child { border-bottom: none; }
+.modal .row .label { color: var(--ink-soft); letter-spacing: 0.05em; }
+.modal .row .value { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.modal .close-row {
+  margin-top: 14px; text-align: center;
+}
+.modal .toggle {
+  width: 38px; height: 22px;
+  background: var(--bank-border); border-radius: 999px;
+  position: relative; cursor: pointer;
+  transition: background 0.2s;
+  border: none; padding: 0;
+}
+.modal .toggle.on { background: var(--accent-green); }
+.modal .toggle::after {
+  content: '';
+  position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  background: white; border-radius: 50%;
+  transition: transform 0.2s;
+}
+.modal .toggle.on::after { transform: translateX(16px); }
+
+/* Animations */
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+@keyframes pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes rise {
+  0% { transform: translateY(8px) scale(0.96); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* Confetti */
+@keyframes confetti {
+  0% { transform: translate(0,0) scale(0); opacity: 1; }
+  100% { transform: translate(var(--dx),var(--dy)) scale(1); opacity: 0; }
+}
+.confetti-container {
+  position: absolute; inset: 0; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.confetti-dot {
+  position: absolute; width: 5px; height: 5px;
+  border-radius: 999px;
+  animation: confetti 0.9s ease-out forwards;
+}
+
+/* Score mode */
+.score-bar {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 4px 14px;
+  margin: 0 8px 8px;
+  flex-shrink: 0;
+  font-family: Georgia, serif;
+  border-bottom: 1px solid var(--bank-border);
+  width: calc(100% - 16px); max-width: 360px;
+}
+.score-display {
+  font-size: 16px; font-weight: 800; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  transition: transform 0.18s, color 0.18s;
+  min-width: 60px; text-align: right;
+}
+.score-display.bump {
+  transform: scale(1.25);
+  color: var(--accent-green);
+}
+.score-label {
+  font-size: 9px; color: var(--ink-soft);
+  letter-spacing: 0.18em; text-transform: uppercase;
+}
+.multiplier-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-gold);
+  color: var(--bg-grid);
+  font-size: 10px; font-weight: 800;
+  letter-spacing: 0.05em;
+  animation: mult-pulse 0.6s ease-in-out infinite;
+  font-variant-numeric: tabular-nums;
+}
+@keyframes mult-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+.combo-bar {
+  width: 60px; height: 4px;
+  background: var(--bank-border);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+.combo-bar-fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: linear-gradient(90deg, var(--accent-gold), var(--accent-red));
+  border-radius: 999px;
+  transition: width 0.1s linear;
+}
+
+/* Score popup floating from cleared equation */
+.score-pop {
+  position: fixed;
+  z-index: 5000;
+  pointer-events: none;
+  font-family: Georgia, serif;
+  font-size: 22px; font-weight: 900;
+  color: var(--accent-green);
+  text-shadow: 0 2px 8px rgba(0,0,0,0.3), 0 0 12px rgba(106,142,61,0.5);
+  animation: score-pop 1.0s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  white-space: nowrap;
+}
+.score-pop.crossmath { color: var(--accent-gold); font-size: 28px; }
+@keyframes score-pop {
+  0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  20%  { transform: translate(-50%, -100%) scale(1.2); opacity: 1; }
+  60%  { transform: translate(-50%, -120%) scale(1.0); opacity: 1; }
+  100% { transform: translate(-50%, -180%) scale(0.8); opacity: 0; }
+}
+
+/* Equation collapse: cells flash bright, then collapse + spin out */
+.cell.num.value-locator {
+  animation: value-flash 0.7s ease-out;
+  z-index: 5;
+}
+@keyframes value-flash {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 0 4px var(--accent-gold), 0 0 12px 4px rgba(200,152,73,0.7); }
+}
+
+.cell.num.flashing {
+  background: #fff5b8 !important;
+  color: #2d4710 !important;
+  border-color: var(--accent-green) !important;
+  box-shadow:
+    inset 0 0 0 3px var(--accent-green),
+    0 0 16px 4px rgba(255, 220, 100, 0.7) !important;
+  transform: scale(1.12);
+  z-index: 5;
+  animation: cell-flash 0.35s ease-out;
+}
+@keyframes cell-flash {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.18); }
+  100% { transform: scale(1.12); }
+}
+.cell.num.collapsing {
+  animation: cell-collapse 0.55s cubic-bezier(0.45, 0, 0.55, 1) forwards;
+  z-index: 4;
+}
+@keyframes cell-collapse {
+  0%   { transform: scale(1.12) rotate(0deg); opacity: 1; }
+  50%  { transform: scale(1.0)  rotate(8deg); opacity: 1; }
+  100% { transform: scale(0.0)  rotate(180deg); opacity: 0; }
+}
+
+/* Arcade replacement cells animate in from their natural slide direction.
+   Cells assigned the 'arcade-incoming' class scale up from 0 with a bounce. */
+.cell.num.arcade-incoming,
+.cell.op.arcade-incoming,
+.cell.eq.arcade-incoming {
+  animation: arcade-slide-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  transform-origin: var(--slide-origin, center);
+}
+@keyframes arcade-slide-in {
+  0%   { transform: scale(0) translate(var(--slide-from-x, 0), var(--slide-from-y, 0)) rotate(-90deg); opacity: 0; }
+  60%  { transform: scale(1.1) translate(0, 0) rotate(8deg); opacity: 1; }
+  100% { transform: scale(1) translate(0, 0) rotate(0deg); opacity: 1; }
+}
+
+/* Shockwave ripple from a collapse center */
+.shockwave {
+  position: fixed;
+  pointer-events: none;
+  z-index: 4500;
+  border: 3px solid var(--accent-green);
+  border-radius: 50%;
+  animation: shockwave-expand 0.7s cubic-bezier(0.22, 0.6, 0.36, 1) forwards;
+  transform: translate(-50%, -50%);
+  width: 20px; height: 20px;
+}
+@keyframes shockwave-expand {
+  0%   { width: 20px;  height: 20px;  opacity: 0.9; border-width: 4px; }
+  60%  { opacity: 0.6; }
+  100% { width: 240px; height: 240px; opacity: 0; border-width: 1px; }
+}
+
+/* Settled state — cleared equation cells, locked in */
+.cell.num.settled {
+  background: linear-gradient(135deg, #c8e090 0%, #a8c870 50%, #c8e090 100%) !important;
+  background-size: 200% 200% !important;
+  color: #1a3010 !important;
+  border: 2px solid #4a6f1f !important;
+  cursor: default !important;
+  animation: settled-shimmer 3s ease-in-out infinite;
+  position: relative;
+  box-shadow: 0 1px 0 rgba(45, 71, 16, 0.5), inset 0 1px 0 rgba(255,255,255,0.3);
+}
+.cell.num.settled::after {
+  content: '';
+  position: absolute; inset: 3px;
+  border: 1px solid rgba(45, 71, 16, 0.4);
+  border-radius: 2px;
+  pointer-events: none;
+}
+html.dark .cell.num.settled {
+  background: linear-gradient(135deg, #3d5a25 0%, #587a3a 50%, #3d5a25 100%) !important;
+  color: #e8f5c4 !important;
+  border-color: #95c662 !important;
+}
+@keyframes settled-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+/* Sparkle particles emitted on equation clear */
+.spark-burst {
+  position: fixed;
+  z-index: 5000;
+  pointer-events: none;
+  width: 0; height: 0;
+}
+.spark-burst .particle {
+  position: absolute;
+  left: -3px; top: -3px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--p-color, var(--accent-green));
+  box-shadow: 0 0 8px 2px var(--p-color, var(--accent-green));
+  animation: particle-fly 0.9s cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
+  opacity: 0;
+}
+@keyframes particle-fly {
+  0%   { transform: translate(0,0) scale(0.5); opacity: 1; }
+  60%  { transform: translate(var(--px), var(--py)) scale(1); opacity: 1; }
+  100% { transform: translate(var(--px), calc(var(--py) + 60px)) scale(0.2); opacity: 0; }
+}
+
+
+.fireworks {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+.firework {
+  position: absolute;
+  left: var(--burst-x); top: var(--burst-y);
+  width: 0; height: 0;
+  animation: firework-fade 2.2s ease-out forwards;
+  animation-delay: var(--burst-delay, 0s);
+}
+@keyframes firework-fade {
+  0%, 75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.firework .rocket {
+  position: absolute;
+  left: -3px; top: -3px;
+  width: 6px; height: 6px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 14px 4px var(--burst-color, #fff);
+  animation: rocket-launch 0.6s ease-out forwards;
+}
+@keyframes rocket-launch {
+  0%   { transform: translateY(var(--launch-from, 100vh)) scale(1); opacity: 1; }
+  90%  { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(0) scale(0); opacity: 0; }
+}
+.firework .spark {
+  position: absolute;
+  left: -4px; top: -4px;
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  background: var(--burst-color, #fff);
+  box-shadow:
+    0 0 12px 3px var(--burst-color, #fff),
+    0 0 24px 4px var(--burst-color, #fff);
+  animation: spark-explode 1.4s cubic-bezier(0.1, 0.6, 0.4, 1) forwards;
+  animation-delay: 0.6s;
+  opacity: 0;
+}
+@keyframes spark-explode {
+  0%   { transform: translate(0, 0) scale(1.2); opacity: 1; }
+  60%  { transform: translate(var(--sx), var(--sy)) scale(1); opacity: 1; }
+  100% { transform: translate(var(--sx), calc(var(--sy) + 80px)) scale(0.3); opacity: 0; }
+}
+.firework .flash {
+  position: absolute;
+  left: -70px; top: -70px;
+  width: 140px; height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--burst-color, #fff) 0%, transparent 70%);
+  animation: flash-burst 0.5s ease-out forwards;
+  animation-delay: 0.6s;
+  opacity: 0;
+  mix-blend-mode: screen;
+}
+@keyframes flash-burst {
+  0%   { transform: scale(0.2); opacity: 1; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function () {
+'use strict';
+
+/* ========================================================================
+   CONFIG
+======================================================================== */
+var DRAG_THRESHOLD = 6;
+var TAP_HOLD_MS = 110; // small delay before drag activates — protects taps
+
+var DIFFICULTY = {
+  easy:   { label: 'Easy',   color: '#6a8e3d', poolMax: 30, minusChance: 0.30, maxNum: 60,
+            numEquations: 8,  givenCount: 11, decoyCount: 3, minChainDepth: 0, maxLayoutDim: 5 },
+  medium: { label: 'Medium', color: '#c89849', poolMax: 40, minusChance: 0.55, maxNum: 80,
+            numEquations: 10, givenCount: 13, decoyCount: 4, minChainDepth: 2, maxLayoutDim: 6 },
+  hard:   { label: 'Hard',   color: '#c1432d', poolMax: 70, minusChance: 0.75, maxNum: 150,
+            numEquations: 12, givenCount: 13, decoyCount: 7, minChainDepth: 3, maxLayoutDim: 7 }
+};
+
+var FIREWORK_COLORS = [
+  '#ff4d4d', '#ffce3a', '#5fe663', '#3ac0ff',
+  '#c46bff', '#ff7ad9', '#ffffff', '#ffa53a'
+];
+
+/* ========================================================================
+   UTILITIES
+======================================================================== */
+function shuffle(arr) {
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(R() * (i + 1));
+    var t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+function applyOp(a, op, b) {
+  if (op === '+') return a + b;
+  if (op === '−') return a - b;
+  if (op === '×') return a * b;
+  if (op === '÷') return Math.floor(a / b);
+  return a - b;
+}
+// Back-compute the missing operand of `a op b = c` given the other two.
+// Returns null if the result wouldn't be a positive integer.
+// Position 0 = solve for a, given b and c.  Position 1 = solve for b.  Position 2 = solve for c.
+function backCompute(op, knownVals, missingPos) {
+  // knownVals has 3 entries; the one at missingPos is undefined.
+  var a = knownVals[0], b = knownVals[1], c = knownVals[2];
+  var v;
+  if (missingPos === 0) {
+    if (op === '+') v = c - b;
+    else if (op === '−') v = c + b;
+    else if (op === '×') { if (b === 0 || c % b !== 0) return null; v = c / b; }
+    else if (op === '÷') v = c * b;
+    else v = c + b;
+  } else if (missingPos === 1) {
+    if (op === '+') v = c - a;
+    else if (op === '−') v = a - c;
+    else if (op === '×') { if (a === 0 || c % a !== 0) return null; v = c / a; }
+    else if (op === '÷') { if (c === 0 || a % c !== 0) return null; v = a / c; }
+    else v = a - c;
+  } else {
+    v = applyOp(a, op, b);
+  }
+  if (!Number.isInteger(v) || v < 1) return null;
+  return v;
+}
+function applyChain(values, ops) {
+  var r = values[0];
+  for (var i = 0; i < ops.length; i++) r = applyOp(r, ops[i], values[i + 1]);
+  return r;
+}
+
+/* Seedable RNG for daily puzzles (mulberry32) */
+function seedRng(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = t + Math.imul(t ^ (t >>> 7), 61 | t) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function dailySeed(diff) {
+  var d = new Date();
+  var ymd = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  var diffOffset = diff === 'easy' ? 1 : diff === 'medium' ? 2 : 3;
+  return ymd * 10 + diffOffset;
+}
+function todayKey() {
+  var d = new Date();
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+}
+function yesterdayKey() {
+  var d = new Date(); d.setDate(d.getDate() - 1);
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+}
+
+/* RNG-driven helpers used by the layout/value generators */
+var R = Math.random;
+function rndInt(max) { return Math.floor(R() * max); }
+
+/* ========================================================================
+   LAYOUT GENERATOR — sparse irregular crossword, triplets only
+======================================================================== */
+function genLayout(cfg) {
+  var occupied = {};
+  var cellEqs = {};
+  var equations = [];
+
+  function placeKeys(orientation, anchorKey, anchorIdx) {
+    var p = anchorKey.split(',');
+    var r0 = +p[0], c0 = +p[1];
+    var keys = [];
+    for (var i = 0; i < 3; i++) {
+      var off = i - anchorIdx;
+      var r, c;
+      if (orientation === 'h') { r = r0; c = c0 + off; }
+      else { r = r0 + off; c = c0; }
+      keys.push(r + ',' + c);
+    }
+    return keys;
+  }
+
+  // Seed at (10, 10), horizontal
+  var firstKeys = ['10,10', '10,11', '10,12'];
+  for (var i = 0; i < 3; i++) {
+    occupied[firstKeys[i]] = true;
+    cellEqs[firstKeys[i]] = [0];
+  }
+  equations.push({ cells: firstKeys, orientation: 'h' });
+
+  while (equations.length < cfg.numEquations) {
+    var added = false;
+    var attempts = 0;
+    while (attempts < 250 && !added) {
+      attempts++;
+      var lowDegree = [], midDegree = [];
+      for (var ck in cellEqs) {
+        if (cellEqs[ck].length === 1) lowDegree.push(ck);
+        else if (cellEqs[ck].length === 2) midDegree.push(ck);
+      }
+      var pool;
+      if (lowDegree.length > 0 && (midDegree.length === 0 || R() < 0.80)) pool = lowDegree;
+      else if (midDegree.length > 0) pool = midDegree;
+      else break;
+
+      var anchorKey = pool[rndInt(pool.length)];
+      var usedOrients = {};
+      for (var aei = 0; aei < cellEqs[anchorKey].length; aei++) {
+        usedOrients[equations[cellEqs[anchorKey][aei]].orientation] = true;
+      }
+      var newOrient;
+      if (!usedOrients.h) newOrient = 'h';
+      else if (!usedOrients.v) newOrient = 'v';
+      else continue;
+
+      var anchorIdx = rndInt(3);
+      var keys = placeKeys(newOrient, anchorKey, anchorIdx);
+
+      // Check overlap
+      var bad = false;
+      for (var ki = 0; ki < keys.length; ki++) {
+        if (keys[ki] === anchorKey) continue;
+        if (occupied[keys[ki]]) { bad = true; break; }
+      }
+      if (bad) continue;
+
+      var first = keys[0].split(',');
+      var last = keys[keys.length - 1].split(',');
+      var headKey, tailKey;
+      if (newOrient === 'h') {
+        headKey = (+first[0]) + ',' + (+first[1] - 1);
+        tailKey = (+last[0]) + ',' + (+last[1] + 1);
+      } else {
+        headKey = (+first[0] - 1) + ',' + (+first[1]);
+        tailKey = (+last[0] + 1) + ',' + (+last[1]);
+      }
+      if (occupied[headKey] || occupied[tailKey]) continue;
+
+      // Anti-chain: no row or column with 4+ consecutive cells
+      var hyp = {};
+      for (var ho in occupied) hyp[ho] = true;
+      for (var hk = 0; hk < keys.length; hk++) hyp[keys[hk]] = true;
+      var chainBad = false;
+      for (var hk2 in hyp) {
+        if (chainBad) break;
+        var pp3 = hk2.split(',');
+        var hr = +pp3[0], hc = +pp3[1];
+        if (!hyp[hr + ',' + (hc - 1)]) {
+          var l = 0, c4 = hc;
+          while (hyp[hr + ',' + c4]) { l++; c4++; }
+          if (l > 3) { chainBad = true; break; }
+        }
+        if (!hyp[(hr - 1) + ',' + hc]) {
+          var lv = 0, r4 = hr;
+          while (hyp[r4 + ',' + hc]) { lv++; r4++; }
+          if (lv > 3) { chainBad = true; break; }
+        }
+      }
+      if (chainBad) continue;
+
+      // Compactness cap: reject placements that would expand the layout's bounding box
+      // beyond the difficulty's maxLayoutDim. Without this, layouts can sprawl beyond the
+      // viewport and force horizontal scrolling.
+      var maxDim = cfg.maxLayoutDim || 8;
+      // Compute current bounding box from all occupied + new keys
+      var minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+      for (var bk in occupied) {
+        var bp = bk.split(',');
+        var br = +bp[0], bc = +bp[1];
+        if (br < minR) minR = br;
+        if (br > maxR) maxR = br;
+        if (bc < minC) minC = bc;
+        if (bc > maxC) maxC = bc;
+      }
+      for (var nk = 0; nk < keys.length; nk++) {
+        var npp = keys[nk].split(',');
+        var nr = +npp[0], nc = +npp[1];
+        if (nr < minR) minR = nr;
+        if (nr > maxR) maxR = nr;
+        if (nc < minC) minC = nc;
+        if (nc > maxC) maxC = nc;
+      }
+      var bboxRows = maxR - minR + 1;
+      var bboxCols = maxC - minC + 1;
+      if (bboxRows > maxDim || bboxCols > maxDim) continue;
+
+      // Commit
+      var eqIdx = equations.length;
+      for (var kj = 0; kj < keys.length; kj++) {
+        occupied[keys[kj]] = true;
+        if (!cellEqs[keys[kj]]) cellEqs[keys[kj]] = [];
+        cellEqs[keys[kj]].push(eqIdx);
+      }
+      equations.push({ cells: keys, orientation: newOrient });
+      added = true;
+    }
+    if (!added) break;
+  }
+
+  // Normalize coordinates so they start at 0,0
+  var minR = Infinity, minC = Infinity;
+  for (var key in occupied) {
+    var pp = key.split(',');
+    if (+pp[0] < minR) minR = +pp[0];
+    if (+pp[1] < minC) minC = +pp[1];
+  }
+  var maxR = 0, maxC = 0;
+  for (var ei = 0; ei < equations.length; ei++) {
+    var newKeys = [];
+    for (var jj = 0; jj < equations[ei].cells.length; jj++) {
+      var qq = equations[ei].cells[jj].split(',');
+      var nr2 = +qq[0] - minR, nc2 = +qq[1] - minC;
+      newKeys.push(nr2 + ',' + nc2);
+      if (nr2 > maxR) maxR = nr2;
+      if (nc2 > maxC) maxC = nc2;
+    }
+    equations[ei].cells = newKeys;
+  }
+  var seen2 = {};
+  var cellsList = [];
+  for (var ei2 = 0; ei2 < equations.length; ei2++) {
+    for (var ck2 = 0; ck2 < equations[ei2].cells.length; ck2++) {
+      var key2 = equations[ei2].cells[ck2];
+      if (!seen2[key2]) { seen2[key2] = true; cellsList.push(key2); }
+    }
+  }
+  return { equations: equations, cells: cellsList, rows: maxR + 1, cols: maxC + 1 };
+}
+
+/* ========================================================================
+   VALUE ASSIGNMENT
+======================================================================== */
+function assignValues(layout, cfg) {
+  // Operator pool depends on settings. With muldiv off, only +/−. With muldiv on, all four.
+  var allowMulDiv = !!(state && state.settings && state.settings.mulDiv);
+
+  function rnd(maxBound) {
+    var m = maxBound || cfg.poolMax;
+    return 1 + rndInt(m);
+  }
+  function pickOp() {
+    if (allowMulDiv) {
+      // 35% +, 20% −, 22% ×, 23% ÷ — biased toward variety
+      var r = R();
+      if (r < 0.35) return '+';
+      if (r < 0.55) return '−';
+      if (r < 0.77) return '×';
+      return '÷';
+    }
+    return R() < cfg.minusChance ? '−' : '+';
+  }
+  function valid(n) { return Number.isInteger(n) && n >= 1 && n <= cfg.maxNum; }
+  function pickValuesForOp(op, existingV0, existingV1, existingV2) {
+    // Choose v0, v1, v2 such that v0 op v1 = v2, respecting existing constraints.
+    // Returns {v0, v1, v2} or null.
+    // Strategy varies by operator to keep all values valid positive integers ≤ maxNum.
+    var v0, v1, v2;
+    if (op === '+') {
+      v0 = existingV0 !== undefined ? existingV0 : rnd();
+      v1 = existingV1 !== undefined ? existingV1 : rnd();
+      v2 = v0 + v1;
+    } else if (op === '−') {
+      v0 = existingV0 !== undefined ? existingV0 : rnd();
+      v1 = existingV1 !== undefined ? existingV1 : rnd();
+      v2 = v0 - v1;
+    } else if (op === '×') {
+      // Keep product ≤ maxNum: pick v0 ∈ [2, sqrt(maxNum)], v1 ∈ [2, maxNum / v0]
+      // Avoid v0=1 or v1=1 (trivial answers).
+      var maxFactor = Math.floor(Math.sqrt(cfg.maxNum));
+      v0 = existingV0 !== undefined ? existingV0 : (2 + rndInt(Math.max(1, maxFactor - 1)));
+      if (v0 < 2 || v0 > cfg.maxNum) return null;
+      var maxV1 = Math.floor(cfg.maxNum / Math.max(1, v0));
+      if (maxV1 < 2) return null;
+      v1 = existingV1 !== undefined ? existingV1 : (2 + rndInt(Math.max(1, maxV1 - 1)));
+      if (v1 < 2 || v1 > cfg.maxNum) return null;
+      v2 = v0 * v1;
+    } else if (op === '÷') {
+      // a ÷ b = c, so a = b × c. Pick b ∈ [2, sqrt(maxNum)], c ∈ [2, maxNum / b].
+      var maxF2 = Math.floor(Math.sqrt(cfg.maxNum));
+      v1 = existingV1 !== undefined ? existingV1 : (2 + rndInt(Math.max(1, maxF2 - 1)));
+      if (v1 < 2 || v1 > cfg.maxNum) return null;
+      var maxQuot = Math.floor(cfg.maxNum / Math.max(1, v1));
+      if (maxQuot < 2) return null;
+      v2 = existingV2 !== undefined ? existingV2 : (2 + rndInt(Math.max(1, maxQuot - 1)));
+      if (v2 < 2 || v2 > cfg.maxNum) return null;
+      v0 = v1 * v2;
+    } else return null;
+    if (!valid(v0) || !valid(v1) || !valid(v2)) return null;
+    if (existingV0 !== undefined && existingV0 !== v0) return null;
+    if (existingV1 !== undefined && existingV1 !== v1) return null;
+    if (existingV2 !== undefined && existingV2 !== v2) return null;
+    return { v0: v0, v1: v1, v2: v2 };
+  }
+
+  for (var attempt = 0; attempt < 5000; attempt++) {
+    var values = {};
+    var eqOps = [];
+    var ok = true;
+    for (var ei = 0; ei < layout.equations.length; ei++) {
+      var eq = layout.equations[ei];
+      // Try the preferred operator (from pickOp's distribution) up to 30 times,
+      // only falling back to alternative operators if that fails.
+      var preferredOp = pickOp();
+      var picked = null;
+      for (var inner0 = 0; inner0 < 30; inner0++) {
+        var got0 = pickValuesForOp(preferredOp, values[eq.cells[0]], values[eq.cells[1]], values[eq.cells[2]]);
+        if (got0) { picked = { op: preferredOp, v: got0 }; break; }
+      }
+      if (!picked) {
+        var opTriesAll = allowMulDiv ? ['+', '−', '×', '÷'] : ['+', '−'];
+        shuffle(opTriesAll);
+        for (var oi = 0; oi < opTriesAll.length; oi++) {
+          var tryOp = opTriesAll[oi];
+          if (tryOp === preferredOp) continue;
+          for (var inner = 0; inner < 30; inner++) {
+            var got = pickValuesForOp(tryOp, values[eq.cells[0]], values[eq.cells[1]], values[eq.cells[2]]);
+            if (got) { picked = { op: tryOp, v: got }; break; }
+          }
+          if (picked) break;
+        }
+      }
+      if (!picked) { ok = false; break; }
+      values[eq.cells[0]] = picked.v.v0;
+      values[eq.cells[1]] = picked.v.v1;
+      values[eq.cells[2]] = picked.v.v2;
+      eqOps.push([picked.op]);
+    }
+    if (ok) return { values: values, eqOps: eqOps };
+  }
+  return null;
+}
+
+/* ========================================================================
+   SOLVER + DEDUCIBILITY
+======================================================================== */
+function isDeducible(layout, puzzle, givens) {
+  var known = {};
+  for (var k in givens) if (givens[k]) known[k] = puzzle.values[k];
+  var depth = 0;
+  while (true) {
+    var progressed = false;
+    for (var ei = 0; ei < layout.equations.length; ei++) {
+      var eq = layout.equations[ei];
+      var c0 = eq.cells[0], c1 = eq.cells[1], c2 = eq.cells[2];
+      var ops = puzzle.eqOps[ei];
+      var k0 = known[c0], k1 = known[c1], k2 = known[c2];
+      var unknown = (k0 === undefined ? 1 : 0) + (k1 === undefined ? 1 : 0) + (k2 === undefined ? 1 : 0);
+      if (unknown !== 1) continue;
+      var missingPos = (k0 === undefined) ? 0 : (k1 === undefined ? 1 : 2);
+      var solved = backCompute(ops[0], [k0, k1, k2], missingPos);
+      if (solved == null) continue; // can't deduce a valid positive integer
+      known[eq.cells[missingPos]] = solved;
+      progressed = true;
+    }
+    if (!progressed) break;
+    depth++;
+  }
+  for (var i = 0; i < layout.cells.length; i++) {
+    if (known[layout.cells[i]] === undefined) return { ok: false, depth: depth };
+  }
+  return { ok: true, depth: depth };
+}
+
+function countSolutions(layout, puzzle, givens, cap, extras) {
+  var emptyCells = [];
+  for (var i = 0; i < layout.cells.length; i++) {
+    if (!givens[layout.cells[i]]) emptyCells.push(layout.cells[i]);
+  }
+  var bank = [];
+  for (var ec = 0; ec < emptyCells.length; ec++) bank.push(puzzle.values[emptyCells[ec]]);
+  if (extras) for (var xi = 0; xi < extras.length; xi++) bank.push(extras[xi]);
+  var available = bank.slice();
+  var assign = {};
+  for (var k in givens) if (givens[k]) assign[k] = puzzle.values[k];
+
+  // Order empty cells by participation count (most-constrained first)
+  emptyCells.sort(function (a, b) {
+    var aEqs = 0, bEqs = 0;
+    for (var ee = 0; ee < layout.equations.length; ee++) {
+      if (layout.equations[ee].cells.indexOf(a) !== -1) aEqs++;
+      if (layout.equations[ee].cells.indexOf(b) !== -1) bEqs++;
+    }
+    return bEqs - aEqs;
+  });
+
+  var count = 0;
+  function checkEqsAtCell(key) {
+    for (var ei = 0; ei < layout.equations.length; ei++) {
+      var eq = layout.equations[ei];
+      if (eq.cells.indexOf(key) === -1) continue;
+      var c0 = eq.cells[0], c1 = eq.cells[1], c2 = eq.cells[2];
+      if (assign[c0] !== undefined && assign[c1] !== undefined && assign[c2] !== undefined) {
+        if (applyOp(assign[c0], puzzle.eqOps[ei][0], assign[c1]) !== assign[c2]) return false;
+      }
+    }
+    return true;
+  }
+  function recurse(idx) {
+    if (count >= cap) return;
+    if (idx === emptyCells.length) { count++; return; }
+    var key = emptyCells[idx];
+    var tried = {};
+    for (var bi = 0; bi < available.length; bi++) {
+      var v = available[bi];
+      if (v == null) continue;
+      if (tried[v]) continue;
+      tried[v] = true;
+      assign[key] = v;
+      if (checkEqsAtCell(key)) {
+        available[bi] = null;
+        recurse(idx + 1);
+        available[bi] = v;
+        if (count >= cap) { delete assign[key]; return; }
+      }
+    }
+    delete assign[key];
+  }
+  recurse(0);
+  return count;
+}
+
+/* ========================================================================
+   GIVENS PICKER — deduction-solvable, balanced, depth-aware
+======================================================================== */
+function pickGivens(layout, puzzle, targetCount, cfg) {
+  var bestScore = -1;
+  var bestGivens = null;
+  for (var attempt = 0; attempt < 400; attempt++) {
+    var shuffled = shuffle(layout.cells);
+    var picked = shuffled.slice(0, targetCount);
+    var givens = {};
+    for (var p = 0; p < picked.length; p++) givens[picked[p]] = true;
+    // Coverage rule: each equation must have 1 or 2 givens (never 0 or 3)
+    var bad = false;
+    var resultGivenCount = 0;   // equations whose result cell is given
+    var backComputeCount = 0;   // equations the player will back-compute (result given but at least one operand missing)
+    var forwardComputeCount = 0;// equations the player will forward-compute (both operands given but result missing)
+    for (var ei = 0; ei < layout.equations.length; ei++) {
+      var eq = layout.equations[ei];
+      var g0 = !!givens[eq.cells[0]];
+      var g1 = !!givens[eq.cells[1]];
+      var g2 = !!givens[eq.cells[2]];
+      var g = (g0?1:0)+(g1?1:0)+(g2?1:0);
+      if (g === 0 || g === 3) { bad = true; break; }
+      if (g2) resultGivenCount++;
+      // What's the FIRST kind of step the player would do here? Only relevant if 2-given.
+      if (g === 2) {
+        if (g0 && g1) forwardComputeCount++;
+        else backComputeCount++;
+      }
+    }
+    if (bad) continue;
+    // Need at least one back-compute step somewhere — otherwise the puzzle is trivial
+    // (just add/subtract, no actual solving for unknowns).
+    if (backComputeCount === 0) continue;
+    var ded = isDeducible(layout, puzzle, givens);
+    if (!ded.ok) continue;
+    if (countSolutions(layout, puzzle, givens, 2) !== 1) continue;
+    if (ded.depth < cfg.minChainDepth) continue;
+
+    // Score: prefer higher chain depth (more interesting), more back-compute steps,
+    // and more result-cells given (more variety).
+    var score = ded.depth * 10 + backComputeCount * 3 + resultGivenCount;
+    if (score > bestScore) { bestScore = score; bestGivens = givens; }
+    // If we found one with at least minChainDepth+1 depth and a healthy back-compute count,
+    // good enough — return early to keep generation snappy.
+    if (ded.depth >= cfg.minChainDepth + 1 && backComputeCount >= 2) return givens;
+  }
+  return bestGivens;
+}
+
+/* ========================================================================
+   SMART DECOY PICKER
+======================================================================== */
+function pickDecoys(layout, puzzle, givens, count, cfg) {
+  if (count <= 0) return [];
+  var taken = {};
+  for (var i = 0; i < layout.cells.length; i++) taken[puzzle.values[layout.cells[i]]] = true;
+
+  // Generate candidate decoys: prefer values close to real values (more confusing)
+  var candidates = [];
+  for (var ci = 0; ci < layout.cells.length; ci++) {
+    var v = puzzle.values[layout.cells[ci]];
+    var offsets = [-3, -2, -1, 1, 2, 3];
+    for (var o = 0; o < offsets.length; o++) {
+      var c = v + offsets[o];
+      if (c >= 1 && c <= cfg.maxNum && !taken[c]) candidates.push(c);
+    }
+  }
+  // Add some random values too for variety
+  for (var ri = 0; ri < 20; ri++) {
+    var rv = 1 + rndInt(cfg.maxNum);
+    if (!taken[rv]) candidates.push(rv);
+  }
+
+  for (var attempt = 0; attempt < 200; attempt++) {
+    var shuffled = shuffle(candidates);
+    var decoys = [];
+    var used = {};
+    for (var sk = 0; sk < shuffled.length && decoys.length < count; sk++) {
+      var d = shuffled[sk];
+      if (used[d]) continue;
+      decoys.push(d); used[d] = true;
+    }
+    if (decoys.length < count) continue;
+    if (countSolutions(layout, puzzle, givens, 2, decoys) === 1) return decoys;
+  }
+  return null;
+}
+
+/* ========================================================================
+   GENERATE PUZZLE
+======================================================================== */
+// Compute the maximum layout dimension that will fit on the current viewport
+// while keeping cells at a comfortable target size. Visual grid uses 2N-1 cells
+// for N layout cells, so we work backwards from viewport size.
+function computeViewportLayoutCap(diff) {
+  var vw = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 380;
+  var vh = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 700;
+
+  // Target cell size by difficulty: Easy gets the biggest cells (less complex puzzles
+  // can afford bigger cells); Hard accepts smaller cells in exchange for more equations.
+  var targetCell = diff === 'easy' ? 40 : (diff === 'medium' ? 36 : 32);
+  var minCell = 28; // hard floor
+
+  // Reserved vertical space — must match the auto-fit math in renderGrid()
+  var scoreBarReserve = (state && state.settings && state.settings.scoreMode) ? 40 : 0;
+  // Bank rows: estimate based on equation count (more equations = more bank tiles = more rows)
+  var cfg = DIFFICULTY[diff];
+  var estBankTiles = cfg.numEquations * 2 + (cfg.decoyCount || 0); // rough
+  var estBankRows = Math.max(1, Math.ceil(estBankTiles / 9));
+  var bankReserve = 44 * estBankRows + 12;
+  var baseReserve = 200; // top bar + diff pills + title + actions + footer + margins
+  var availW = vw - 12;
+  var availH = vh - baseReserve - scoreBarReserve - bankReserve;
+  if (availH < 200) availH = 200;
+
+  // How many visual cells fit at the target size (with floor)?
+  function maxVisualAt(size) {
+    return { cols: Math.floor(availW / size), rows: Math.floor(availH / size) };
+  }
+  var atTarget = maxVisualAt(targetCell);
+  var atMin = maxVisualAt(minCell);
+
+  // Prefer the larger of (rows fit at target, cols fit at target) so layout can be
+  // either landscape-ish or portrait-ish. We'll cap to the smaller of fit dimensions.
+  var visualCap = Math.min(atTarget.cols, atTarget.rows);
+  // If visualCap is too low (would prevent puzzles from fitting numEquations), fall back to min cell
+  if (visualCap < 9) visualCap = Math.min(atMin.cols, atMin.rows);
+
+  // Convert visual cap to layout cap. visual = 2*layout - 1, so layout = (visual + 1) / 2
+  var layoutCap = Math.floor((visualCap + 1) / 2);
+  // Clamp to sensible range
+  if (layoutCap < 5) layoutCap = 5;
+  if (layoutCap > 9) layoutCap = 9;
+  return layoutCap;
+}
+
+function generatePuzzle(diff, seedFn) {
+  if (seedFn) R = seedFn;
+  else R = Math.random;
+  var cfg = DIFFICULTY[diff];
+  // Override maxLayoutDim with viewport-aware computation.
+  // Don't go below the difficulty's hard-coded minimum (some difficulties NEED room for their equations).
+  var minLayoutDim = diff === 'easy' ? 5 : (diff === 'medium' ? 6 : 7);
+  var dynamicCap = computeViewportLayoutCap(diff);
+  var effectiveCap = Math.max(minLayoutDim, dynamicCap);
+  // Mutate cfg's maxLayoutDim for this generation. Restore at end.
+  var origMaxLayoutDim = cfg.maxLayoutDim;
+  cfg.maxLayoutDim = effectiveCap;
+  var maxAttempts = diff === 'hard' ? 600 : 250;
+  for (var attempt = 0; attempt < maxAttempts; attempt++) {
+    var layout = genLayout(cfg);
+    if (layout.equations.length < cfg.numEquations) continue;
+    var puzzle = assignValues(layout, cfg);
+    if (!puzzle) continue;
+    var givens = pickGivens(layout, puzzle, cfg.givenCount, cfg);
+    if (!givens) continue;
+    var decoys = pickDecoys(layout, puzzle, givens, cfg.decoyCount || 0, cfg);
+    if (!decoys) continue;
+
+    // SANITY CHECK: verify the bank we'd build supplies all needed values.
+    var needCounts = {};
+    var bankCounts = {};
+    for (var sci = 0; sci < layout.cells.length; sci++) {
+      var sk = layout.cells[sci];
+      if (!givens[sk]) {
+        var sv = puzzle.values[sk];
+        needCounts[sv] = (needCounts[sv] || 0) + 1;
+        bankCounts[sv] = (bankCounts[sv] || 0) + 1;
+      }
+    }
+    for (var sdi = 0; sdi < decoys.length; sdi++) {
+      bankCounts[decoys[sdi]] = (bankCounts[decoys[sdi]] || 0) + 1;
+    }
+    var bankOk = true;
+    for (var nv in needCounts) {
+      if ((bankCounts[nv] || 0) < needCounts[nv]) { bankOk = false; break; }
+    }
+    if (!bankOk) continue;
+
+    R = Math.random;
+    cfg.maxLayoutDim = origMaxLayoutDim;
+    return { layout: layout, puzzle: puzzle, givens: givens, decoys: decoys, difficulty: diff };
+  }
+  R = Math.random;
+  cfg.maxLayoutDim = origMaxLayoutDim;
+  if (diff === 'hard') return generatePuzzle('medium', seedFn);
+  if (diff === 'medium') return generatePuzzle('easy', seedFn);
+  return null;
+}
+
+/* ========================================================================
+   VISUAL GRID
+======================================================================== */
+function buildVisualGrid(layout, puzzle) {
+  var visual = {};
+  var maxVR = 0, maxVC = 0;
+  for (var i = 0; i < layout.cells.length; i++) {
+    var pp = layout.cells[i].split(',');
+    var r = +pp[0], c = +pp[1];
+    var vr = r * 2, vc = c * 2;
+    visual[vr + ',' + vc] = { type: 'num', cellKey: layout.cells[i] };
+    if (vr > maxVR) maxVR = vr;
+    if (vc > maxVC) maxVC = vc;
+  }
+  for (var ei = 0; ei < layout.equations.length; ei++) {
+    var eq = layout.equations[ei];
+    var ops = puzzle.eqOps[ei];
+    for (var k = 0; k < eq.cells.length - 1; k++) {
+      var a = eq.cells[k].split(','); var b = eq.cells[k + 1].split(',');
+      var midR = (+a[0]) + (+b[0]); var midC = (+a[1]) + (+b[1]);
+      var sym = (k === eq.cells.length - 2) ? '=' : ops[k];
+      visual[midR + ',' + midC] = { type: sym === '=' ? 'eq' : 'op', symbol: sym };
+      if (midR > maxVR) maxVR = midR;
+      if (midC > maxVC) maxVC = midC;
+    }
+  }
+  return { cells: visual, rows: maxVR + 1, cols: maxVC + 1 };
+}
+
+/* ========================================================================
+   STATE
+======================================================================== */
+var state = {
+  difficulty: 'easy',
+  isDaily: false,
+  data: null, visual: null,
+  placed: {}, selected: null, bank: [],
+  shake: false, counted: false, hintUsed: false,
+  hintNumber: null, hintCellKey: null,
+  history: [],     // undo stack: array of {placed: {...}, selected: ...}
+  generating: false,
+  lastFilledKey: null,
+  startTime: 0, elapsed: 0, timerInterval: null,
+  showSolved: false, showStats: false, showSettings: false,
+  // Score mode runtime state
+  score: 0,
+  multiplier: 1,
+  combo: 0,
+  comboExpiry: 0,
+  clearedEqs: {},     // equation index -> true if it's been collapsed
+  settledCells: {},   // cell key -> true if it's "locked" (part of cleared eq)
+  scorePops: [],      // floating score popups currently visible
+  hintsUsedCount: 0,
+  resetsUsedCount: 0,
+  // Arcade mode state
+  arcadeEqsSolved: 0,    // total equations cleared across the run
+  arcadeNextEqId: 1000,  // unique ids for equations we add dynamically
+  arcadeBankTokens: {},  // bank tile id → value, so we can identify and remove specific tiles
+  arcadeIncomingCells: {}, // cellKey → { fromX, fromY } for slide-in animation
+  stats: {
+    easy: { solved: 0, bestTime: null },
+    medium: { solved: 0, bestTime: null },
+    hard: { solved: 0, bestTime: null },
+    streak: 0, lastSolveDate: null, dailySolved: {}
+  },
+  settings: {
+    sound: true, dark: false, scoreMode: false, arcadeMode: false, mulDiv: false
+  }
+};
+
+/* ========================================================================
+   PERSISTENCE
+======================================================================== */
+function loadStats() {
+  try {
+    var raw = localStorage.getItem('cm-stats-v15');
+    if (raw) {
+      var p = JSON.parse(raw);
+      if (p && typeof p === 'object') Object.assign(state.stats, p);
+    }
+    var s = localStorage.getItem('cm-settings-v15');
+    if (s) {
+      var ss = JSON.parse(s);
+      if (ss && typeof ss === 'object') Object.assign(state.settings, ss);
+    }
+  } catch (e) {}
+}
+function saveStats() {
+  try { localStorage.setItem('cm-stats-v15', JSON.stringify(state.stats)); } catch (e) {}
+}
+function saveSettings() {
+  try { localStorage.setItem('cm-settings-v15', JSON.stringify(state.settings)); } catch (e) {}
+}
+
+/* ========================================================================
+   THEME
+======================================================================== */
+function applyTheme() {
+  document.documentElement.classList.toggle('dark', !!state.settings.dark);
+}
+
+/* ========================================================================
+   SOUND
+======================================================================== */
+var audioCtx = null;
+function ensureAudio() {
+  if (audioCtx) return audioCtx;
+  try {
+    var Ctor = window.AudioContext || window.webkitAudioContext;
+    if (Ctor) audioCtx = new Ctor();
+  } catch (e) {}
+  return audioCtx;
+}
+function tone(freq, durMs, vol, type) {
+  if (!state.settings.sound) return;
+  var ctx = ensureAudio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+  try {
+    var o = ctx.createOscillator(); var g = ctx.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    g.gain.value = 0;
+    o.connect(g); g.connect(ctx.destination);
+    var now = ctx.currentTime;
+    g.gain.linearRampToValueAtTime(vol || 0.08, now + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + (durMs / 1000));
+    o.start(now); o.stop(now + (durMs / 1000) + 0.05);
+  } catch (e) {}
+}
+function soundClick()    { tone(420, 60,  0.05, 'square'); }
+function soundCorrect()  { tone(660, 80,  0.07, 'sine'); setTimeout(function(){tone(880,80,0.06,'sine');},80); }
+function soundWrong()    { tone(220, 180, 0.07, 'sawtooth'); }
+function soundClear()    {
+  // Descending Tetris-style line-clear thunk
+  if (!state.settings.sound) return;
+  tone(800, 60, 0.08, 'square');
+  setTimeout(function(){ tone(600, 60, 0.07, 'square'); }, 60);
+  setTimeout(function(){ tone(400, 100, 0.07, 'square'); }, 120);
+}
+function soundCrossmath() {
+  // Bigger fanfare for double clear
+  if (!state.settings.sound) return;
+  [523, 659, 784, 1047, 1318].forEach(function(f, i){
+    setTimeout(function(){ tone(f, 100, 0.10, 'square'); }, i * 50);
+  });
+}
+function soundSolve()    {
+  if (!state.settings.sound) return;
+  [523,659,784,1047].forEach(function(f,i){ setTimeout(function(){ tone(f, 220, 0.10, 'sine'); }, i * 110); });
+}
+
+/* ========================================================================
+   PUZZLE LIFECYCLE
+======================================================================== */
+function startPuzzle(diff, isDaily) {
+  state.difficulty = diff;
+  state.isDaily = !!isDaily;
+  state.generating = true;
+  stopTimer();
+  // Capture into local vars so concurrent calls don't clobber each other
+  var capturedDiff = diff;
+  var capturedDaily = !!isDaily;
+  var thisInvocation = ++startPuzzle.token;
+  render();
+  setTimeout(function () {
+    // If a newer startPuzzle was scheduled, abandon this one
+    if (thisInvocation !== startPuzzle.token) return;
+    var data;
+    if (capturedDaily) {
+      var seed = dailySeed(capturedDiff);
+      data = generatePuzzle(capturedDiff, seedRng(seed));
+    } else {
+      data = generatePuzzle(capturedDiff);
+    }
+    if (thisInvocation !== startPuzzle.token) return; // race-checked again post-gen
+    state.data = data;
+    state.visual = buildVisualGrid(data.layout, data.puzzle);
+    state.placed = {};
+    state.selected = null;
+    var bank = [];
+    for (var i = 0; i < data.layout.cells.length; i++) {
+      var k = data.layout.cells[i];
+      if (!data.givens[k]) bank.push(data.puzzle.values[k]);
+    }
+    if (data.decoys) for (var di = 0; di < data.decoys.length; di++) bank.push(data.decoys[di]);
+    bank.sort(function(a,b) { return a - b; });
+    state.bank = bank;
+    state.shake = false; state.counted = false; state.hintUsed = false;
+    state.hintNumber = null; state.hintCellKey = null;
+    state.lastFilledKey = null; state.generating = false;
+    state.history = [];
+    state.showSolved = false;
+    state.elapsed = 0; state.startTime = Date.now();
+    // Score mode reset
+    state.score = 0;
+    state.multiplier = 1;
+    state.combo = 0;
+    state.comboExpiry = 0;
+    state.clearedEqs = {};
+    state.settledCells = {};
+    state.scorePops = [];
+    state.hintsUsedCount = 0;
+    state.resetsUsedCount = 0;
+    state.arcadeEqsSolved = 0;
+    state.arcadeNextEqId = 1000;
+    startTimer();
+    render();
+  }, 30);
+}
+startPuzzle.token = 0;
+
+function startTimer() {
+  stopTimer();
+  state.timerInterval = setInterval(function () {
+    state.elapsed = Math.floor((Date.now() - state.startTime) / 1000);
+    var el = document.getElementById('timer-display');
+    if (el) el.textContent = formatTime(state.elapsed);
+  }, 1000);
+}
+function stopTimer() {
+  if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
+}
+function formatTime(secs) {
+  var m = Math.floor(secs / 60), s = secs % 60;
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function pushHistory() {
+  // Snapshot of placed map
+  var copy = {};
+  for (var k in state.placed) if (state.placed[k] != null) copy[k] = state.placed[k];
+  state.history.push({ placed: copy, selected: state.selected });
+  if (state.history.length > 50) state.history.shift();
+}
+function undo() {
+  if (state.history.length === 0) return;
+  var prev = state.history.pop();
+  state.placed = prev.placed;
+  state.selected = prev.selected;
+  state.lastFilledKey = null;
+  render();
+}
+function reset() {
+  pushHistory();
+  // In score mode, only reset placed cells that aren't settled (cleared eqs are locked in)
+  if (state.settings.scoreMode) {
+    var newPlaced = {};
+    for (var k in state.placed) if (state.settledCells[k]) newPlaced[k] = state.placed[k];
+    state.placed = newPlaced;
+    state.resetsUsedCount++;
+  } else {
+    state.placed = {};
+  }
+  state.selected = null;
+  state.shake = false;
+  state.lastFilledKey = null;
+  state.hintNumber = null; state.hintCellKey = null; state.hintUsed = false;
+  render();
+}
+function clearWrong() {
+  var status = computeCellStatus();
+  var changed = false;
+  pushHistory();
+  for (var k in state.placed) {
+    if (state.settledCells[k]) continue; // never clear settled cells
+    if (status[k] === 'wrong') { delete state.placed[k]; changed = true; }
+  }
+  if (changed) {
+    state.lastFilledKey = null;
+    state.selected = null;
+    render();
+  } else {
+    state.history.pop();
+  }
+}
+function newPuzzle() { startPuzzle(state.difficulty, state.isDaily); }
+function useHint() {
+  if (state.hintUsed) return;
+  // Require an explicit cell selection. If no eligible cell is selected, do nothing
+  // beyond a brief visual nudge — let the user pick where they need help.
+  if (!state.selected || !state.data || state.data.givens[state.selected]
+      || state.placed[state.selected] != null || state.settledCells[state.selected]) {
+    // Pulse the hint button briefly to signal "select a cell first"
+    var btn = document.querySelector('.action-btn.hint');
+    if (btn) {
+      btn.classList.add('reject');
+      setTimeout(function() { if (btn) btn.classList.remove('reject'); }, 320);
+    }
+    return;
+  }
+  var targetKey = state.selected;
+  state.hintNumber = state.data.puzzle.values[targetKey];
+  state.hintCellKey = targetKey;
+  state.hintUsed = true;
+  if (state.settings.scoreMode) state.hintsUsedCount++;
+  render();
+}
+
+function firstOpenKey() {
+  if (!state.data) return null;
+  for (var i = 0; i < state.data.layout.cells.length; i++) {
+    var k = state.data.layout.cells[i];
+    if (!state.data.givens[k] && state.placed[k] == null) return k;
+  }
+  return null;
+}
+function cellValue(key) {
+  if (state.data.givens[key]) return state.data.puzzle.values[key];
+  return state.placed[key] != null ? state.placed[key] : null;
+}
+function isComplete() {
+  if (!state.data) return false;
+  for (var i = 0; i < state.data.layout.cells.length; i++) {
+    if (cellValue(state.data.layout.cells[i]) == null) return false;
+  }
+  return true;
+}
+function isSolved() {
+  if (state.settings.arcadeMode) return false; // arcade is endless
+  if (!isComplete()) return false;
+  var p = state.data;
+  for (var ei = 0; ei < p.layout.equations.length; ei++) {
+    var eq = p.layout.equations[ei];
+    if (eq.cells.length === 0) continue; // removed equation, skip
+    var ops = p.puzzle.eqOps[ei];
+    var vals = [];
+    for (var ci = 0; ci < eq.cells.length; ci++) vals.push(cellValue(eq.cells[ci]));
+    if (applyChain(vals.slice(0, vals.length - 1), ops) !== vals[vals.length - 1]) return false;
+  }
+  return true;
+}
+function checkAndCelebrate() {
+  if (isSolved() && !state.counted) {
+    state.counted = true;
+    stopTimer();
+    var diffStats = state.stats[state.difficulty];
+    diffStats.solved = (diffStats.solved || 0) + 1;
+    if (diffStats.bestTime == null || state.elapsed < diffStats.bestTime) {
+      diffStats.bestTime = state.elapsed;
+    }
+    // Score-mode best score per difficulty
+    if (state.settings.scoreMode) {
+      var finalScore = computeFinalScore();
+      state.lastFinalScore = finalScore;
+      diffStats.bestScore = diffStats.bestScore || 0;
+      if (finalScore > diffStats.bestScore) diffStats.bestScore = finalScore;
+    }
+    // Streak
+    var today = todayKey();
+    if (state.isDaily) {
+      state.stats.dailySolved = state.stats.dailySolved || {};
+      state.stats.dailySolved[today + ':' + state.difficulty] = state.elapsed;
+    }
+    var last = state.stats.lastSolveDate;
+    if (last !== today) {
+      if (last === yesterdayKey()) state.stats.streak = (state.stats.streak || 0) + 1;
+      else state.stats.streak = 1;
+      state.stats.lastSolveDate = today;
+    }
+    saveStats();
+    soundSolve();
+    launchFireworks();
+    state.showSolved = true;
+    setTimeout(render, 100);
+  } else if (isComplete() && !isSolved()) {
+    soundWrong();
+    triggerShake();
+  }
+}
+
+function countEmptyCells() {
+  if (!state.data) return 0;
+  var n = 0;
+  for (var i = 0; i < state.data.layout.cells.length; i++) {
+    var k = state.data.layout.cells[i];
+    if (!state.data.givens[k] && !state.settledCells[k] && state.placed[k] == null) n++;
+  }
+  return n;
+}
+
+function scrollToFirstEmpty() {
+  // If there's an empty cell off-screen, smoothly scroll the grid to bring it into view.
+  var k = firstOpenKey();
+  if (!k) return;
+  var el = document.querySelector('[data-cell-key="' + k + '"]');
+  if (!el) return;
+  if (el.scrollIntoView) {
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }); } catch (e) {}
+  }
+}
+
+function computeFinalScore() {
+  // Sum all per-equation clears + bonuses
+  var baseClearScore = state.score;
+  var noHintBonus = state.hintsUsedCount === 0 ? 200 : 0;
+  var noResetBonus = state.resetsUsedCount === 0 ? 100 : 0;
+  // Time bonus: faster = more, capped at 300
+  var timeBonus = Math.max(0, 300 - state.elapsed * 2);
+  return baseClearScore + noHintBonus + noResetBonus + Math.round(timeBonus);
+}
+
+function detectEquationClears(justFilledKey) {
+  if (!state.settings.scoreMode || !state.data) return;
+  var p = state.data;
+  var newlyCleared = [];
+  for (var ei = 0; ei < p.layout.equations.length; ei++) {
+    if (state.clearedEqs[ei]) continue;
+    var eq = p.layout.equations[ei];
+    if (!eq.cells || eq.cells.length === 0) continue; // removed equation
+    var vals = [];
+    var allFilled = true;
+    var allCorrect = true;
+    for (var ci = 0; ci < eq.cells.length; ci++) {
+      var v = cellValue(eq.cells[ci]);
+      if (v == null) { allFilled = false; break; }
+      vals.push(v);
+      if (v !== p.puzzle.values[eq.cells[ci]]) allCorrect = false;
+    }
+    if (!allFilled || !allCorrect) continue;
+    var ops = p.puzzle.eqOps[ei];
+    if (applyChain(vals.slice(0, vals.length - 1), ops) !== vals[vals.length - 1]) continue;
+    newlyCleared.push(ei);
+  }
+  if (newlyCleared.length === 0) return;
+
+  // Combo + multiplier
+  var now = Date.now();
+  if (now > state.comboExpiry) {
+    state.combo = 0;
+    state.multiplier = 1;
+  }
+  state.combo += newlyCleared.length;
+  state.multiplier = Math.min(5, 1 + Math.floor(state.combo / 2));
+  state.comboExpiry = now + 5000;
+
+  // Animate each cleared equation; score
+  for (var nc = 0; nc < newlyCleared.length; nc++) {
+    var idx = newlyCleared[nc];
+    state.clearedEqs[idx] = true;
+    var crossmath = (newlyCleared.length > 1 && nc === 0);
+    animateEquationClear(p.layout.equations[idx], crossmath, nc * 80);
+    var basePts = 100;
+    var earned = basePts * state.multiplier;
+    if (newlyCleared.length > 1) earned *= 2;
+    state.score += earned;
+    state.arcadeEqsSolved++;
+    spawnScorePop(p.layout.equations[idx], earned, crossmath || newlyCleared.length > 1);
+  }
+
+  // Mark cells as settled (only matters in non-arcade score mode)
+  if (!state.settings.arcadeMode) {
+    for (var nc2 = 0; nc2 < newlyCleared.length; nc2++) {
+      var eq2 = p.layout.equations[newlyCleared[nc2]];
+      for (var c2 = 0; c2 < eq2.cells.length; c2++) {
+        state.settledCells[eq2.cells[c2]] = true;
+      }
+    }
+  }
+
+  if (newlyCleared.length > 1) soundCrossmath();
+  else soundClear();
+
+  flashScoreBump();
+
+  if (state.settings.arcadeMode) {
+    // After the collapse animation, remove the cleared equations from the layout
+    // and spawn replacement equations. This keeps the puzzle alive.
+    setTimeout(function () {
+      for (var i = 0; i < newlyCleared.length; i++) {
+        replaceArcadeEquation(newlyCleared[i]);
+      }
+      render();
+    }, 900);
+  } else {
+    setTimeout(render, 900);
+  }
+}
+
+/* ARCADE: replace a solved equation with a fresh one anchored to a cell on the grid.
+   This is what gives arcade mode its "Tetris" feel — solved layers vanish, new ones
+   slide in to take their place. The puzzle state is mutated in-place. */
+function replaceArcadeEquation(oldEqIdx) {
+  var p = state.data;
+  var oldEq = p.layout.equations[oldEqIdx];
+  if (!oldEq) return;
+
+  // Step 1: collect cells that belong to other (non-cleared) equations — those stay
+  // on the grid as anchors. Cells that ONLY belonged to this equation will be removed.
+  var staysCells = {};
+  for (var ei = 0; ei < p.layout.equations.length; ei++) {
+    if (state.clearedEqs[ei]) continue;
+    var eq = p.layout.equations[ei];
+    for (var ci = 0; ci < eq.cells.length; ci++) staysCells[eq.cells[ci]] = true;
+  }
+  var removedCells = [];
+  for (var ci2 = 0; ci2 < oldEq.cells.length; ci2++) {
+    var k = oldEq.cells[ci2];
+    if (!staysCells[k]) removedCells.push(k);
+  }
+
+  // Step 2: find an anchor — a cell that survives, currently has a value, and has at
+  // least one empty grid neighbor where we could extend a new equation.
+  var anchorCandidates = [];
+  for (var k2 in staysCells) {
+    if (cellValue(k2) == null) continue;
+    var directions = getFreeDirections(k2);
+    if (directions.length > 0) {
+      anchorCandidates.push({ key: k2, directions: directions, value: cellValue(k2) });
+    }
+  }
+
+  // No anchor available → just remove the cleared equation without replacement.
+  // The arcade run essentially ends if no replacements can be added; the player can
+  // still solve any remaining equations.
+  if (anchorCandidates.length === 0 || removedCells.length === 0) {
+    cleanupRemovedCells(removedCells, oldEqIdx);
+    return;
+  }
+
+  // Step 3: try anchor candidates until we find a valid replacement.
+  // Each tried anchor + direction = a candidate placement for a new triplet.
+  var cfg = DIFFICULTY[state.difficulty];
+  shuffle(anchorCandidates);
+
+  for (var ac = 0; ac < anchorCandidates.length; ac++) {
+    var anchor = anchorCandidates[ac];
+    shuffle(anchor.directions);
+    for (var dd = 0; dd < anchor.directions.length; dd++) {
+      var dir = anchor.directions[dd];  // 'h' or 'v'
+      // The new triplet has 3 cells along `dir`. The anchor cell is one of them.
+      // Try anchor at position 0, 1, or 2 in the new triplet.
+      for (var anchorPos = 0; anchorPos < 3; anchorPos++) {
+        var newKeys = computeNewKeys(anchor.key, dir, anchorPos);
+        if (!newKeys) continue;
+        // Verify ALL non-anchor cells are not currently on the grid (so we don't conflict)
+        var conflict = false;
+        for (var nki = 0; nki < newKeys.length; nki++) {
+          if (nki === anchorPos) continue;
+          var nk = newKeys[nki];
+          // It may exist as a removed cell — that's fine (we'll re-use the slot).
+          // It must NOT currently belong to a non-cleared equation.
+          if (staysCells[nk]) { conflict = true; break; }
+          // Anti-chain: this cell must not be horizontally/vertically adjacent to
+          // ANOTHER active cell (other than its own equation neighbors)
+          if (hasUnrelatedNeighbor(nk, newKeys, staysCells)) { conflict = true; break; }
+        }
+        if (conflict) continue;
+
+        // Generate values for the new triplet that fit (anchor.value at anchorPos)
+        var newValuesAndOp = pickValuesForArcade(anchorPos, anchor.value, cfg);
+        if (!newValuesAndOp) continue;
+
+        // Pre-solve check: simulate the install in a snapshot, verify the resulting
+        // puzzle state is fully solvable (bank-supply + deducibility).
+        var validated = simulateAndValidateArcadeReplacement(oldEqIdx, removedCells, newKeys, anchorPos, anchor.key, newValuesAndOp);
+        if (!validated) continue;
+
+        // Commit: install the new equation using the validated given/empty positions
+        installArcadeEquation(oldEqIdx, removedCells, newKeys, anchorPos, anchor.key, newValuesAndOp, validated.givenPos, validated.emptyPos);
+        return;
+      }
+    }
+  }
+
+  // Couldn't find a placement; just remove the old eq.
+  cleanupRemovedCells(removedCells, oldEqIdx);
+}
+
+function getFreeDirections(cellKey) {
+  // Cell at (r, c). Direction "h" needs cells (r, c±1, c±2) to be empty.
+  // Direction "v" needs cells (r±1..r±2, c) to be empty.
+  // Returns directions where the cell could anchor a new triplet.
+  var p = state.data;
+  var occupiedKeys = {};
+  for (var ei = 0; ei < p.layout.equations.length; ei++) {
+    if (state.clearedEqs[ei]) continue;
+    var eq = p.layout.equations[ei];
+    if (!eq.cells || eq.cells.length === 0) continue;
+    for (var ci = 0; ci < eq.cells.length; ci++) occupiedKeys[eq.cells[ci]] = true;
+  }
+  var pp = cellKey.split(',');
+  var r = +pp[0], c = +pp[1];
+  var dirs = [];
+  // Horizontal: at least 2 free cells in some triplet position aligned with this cell
+  for (var hOff = -2; hOff <= 0; hOff++) {
+    var allFree = true;
+    for (var i = 0; i < 3; i++) {
+      var key = r + ',' + (c + hOff + i);
+      if (key === cellKey) continue;
+      if (occupiedKeys[key]) { allFree = false; break; }
+    }
+    if (allFree) { dirs.push('h'); break; }
+  }
+  for (var vOff = -2; vOff <= 0; vOff++) {
+    var allFree2 = true;
+    for (var i2 = 0; i2 < 3; i2++) {
+      var key2 = (r + vOff + i2) + ',' + c;
+      if (key2 === cellKey) continue;
+      if (occupiedKeys[key2]) { allFree2 = false; break; }
+    }
+    if (allFree2) { dirs.push('v'); break; }
+  }
+  return dirs;
+}
+
+function simulateAndValidateArcadeReplacement(oldEqIdx, removedCells, newKeys, anchorPos, anchorKey, vop) {
+  var p = state.data;
+
+  // Build a snapshot of the layout AFTER install:
+  // - Removed cells gone from layout.cells
+  // - New cells added to layout.cells
+  // - Equation at oldEqIdx replaced with new triplet
+  // - Anchor and given (one of the two non-anchor positions) have known values
+  // - Empty (the other) is the only unknown in the new equation
+
+  // Decide given/empty positions the same way installArcadeEquation does (any non-anchor pos)
+  var nonAnchorPositions = [];
+  for (var npi = 0; npi < newKeys.length; npi++) if (npi !== anchorPos) nonAnchorPositions.push(npi);
+  // For validation, we just need to verify ANY assignment of given/empty works.
+  // Try both options; if EITHER is fully solvable, we accept (the actual install
+  // will pick one randomly).
+  for (var givenPosTry = 0; givenPosTry < nonAnchorPositions.length; givenPosTry++) {
+    var givenPos = nonAnchorPositions[givenPosTry];
+    var emptyPos = nonAnchorPositions[1 - givenPosTry];
+
+    // Build snapshot
+    var snapCells = p.layout.cells.slice();
+    var removedSet = {};
+    for (var rci = 0; rci < removedCells.length; rci++) removedSet[removedCells[rci]] = true;
+    snapCells = snapCells.filter(function(k){ return !removedSet[k]; });
+    for (var nki = 0; nki < newKeys.length; nki++) {
+      if (nki === anchorPos) continue;
+      if (snapCells.indexOf(newKeys[nki]) === -1) snapCells.push(newKeys[nki]);
+    }
+
+    var snapEquations = p.layout.equations.slice();
+    snapEquations[oldEqIdx] = {
+      cells: newKeys,
+      orientation: (newKeys[0].split(',')[0] === newKeys[1].split(',')[0]) ? 'h' : 'v'
+    };
+
+    var snapValues = {};
+    for (var k in p.puzzle.values) {
+      if (!removedSet[k]) snapValues[k] = p.puzzle.values[k];
+    }
+    for (var nki2 = 0; nki2 < newKeys.length; nki2++) {
+      if (nki2 === anchorPos) continue;
+      snapValues[newKeys[nki2]] = vop.values[nki2];
+    }
+
+    var snapEqOps = p.puzzle.eqOps.slice();
+    snapEqOps[oldEqIdx] = [vop.op];
+
+    // Givens: existing givens, minus removed cells, plus the anchor (treated as "known"
+    // because its value is placed) and the new given cell.
+    var snapGivens = {};
+    for (var gk in p.givens) {
+      if (p.givens[gk] && !removedSet[gk]) snapGivens[gk] = true;
+    }
+    // Treat anchor as "given" for purposes of solver (its value IS known/placed)
+    snapGivens[anchorKey] = true;
+    // The new given clue
+    snapGivens[newKeys[givenPos]] = true;
+    // Treat all CURRENTLY-PLACED cells as "given" for solver (their values are known)
+    for (var pk in state.placed) {
+      if (state.placed[pk] != null && !removedSet[pk]) {
+        snapGivens[pk] = true;
+        snapValues[pk] = state.placed[pk]; // ensure correct value used
+      }
+    }
+
+    var snapLayout = { cells: snapCells, equations: snapEquations };
+    var snapPuzzle = { values: snapValues, eqOps: snapEqOps };
+
+    // Filter to active equations (skip cleared/empty)
+    var activeEquations = [];
+    var activeOps = [];
+    var origToNewIdx = {};
+    for (var sei = 0; sei < snapEquations.length; sei++) {
+      if (state.clearedEqs[sei] && sei !== oldEqIdx) continue;
+      var seq = snapEquations[sei];
+      if (!seq.cells || seq.cells.length === 0) continue;
+      origToNewIdx[sei] = activeEquations.length;
+      activeEquations.push(seq);
+      activeOps.push(snapEqOps[sei]);
+    }
+    snapLayout.equations = activeEquations;
+    snapPuzzle.eqOps = activeOps;
+
+    // Bank-supply check: simulated bank = current bank + new tile for empty cell.
+    // For each non-given (non-snapGivens) cell remaining, count its needed value.
+    var simulatedBank = state.bank.slice();
+    simulatedBank.push(vop.values[emptyPos]);
+    var needCounts = {};
+    var bankCounts = {};
+    for (var sci = 0; sci < snapCells.length; sci++) {
+      var sk = snapCells[sci];
+      if (!snapGivens[sk]) {
+        var sv = snapValues[sk];
+        needCounts[sv] = (needCounts[sv] || 0) + 1;
+      }
+    }
+    for (var sbi = 0; sbi < simulatedBank.length; sbi++) {
+      bankCounts[simulatedBank[sbi]] = (bankCounts[simulatedBank[sbi]] || 0) + 1;
+    }
+    // Account for already-placed values consuming bank tiles
+    for (var pk2 in state.placed) {
+      if (state.placed[pk2] != null && !removedSet[pk2]) {
+        // placed value was already drawn from the bank; remove from bankCounts
+        var pv = state.placed[pk2];
+        if (bankCounts[pv]) bankCounts[pv]--;
+      }
+    }
+    var bankOk = true;
+    for (var nv in needCounts) {
+      if ((bankCounts[nv] || 0) < needCounts[nv]) { bankOk = false; break; }
+    }
+    if (!bankOk) continue; // try next given/empty assignment
+
+    // Deducibility check
+    var ded = isDeducible(snapLayout, snapPuzzle, snapGivens);
+    if (!ded.ok) continue;
+
+    // OK, this assignment of given/empty is valid — return it
+    return { givenPos: givenPos, emptyPos: emptyPos };
+  }
+  return null; // no valid assignment found
+}
+
+function computeNewKeys(anchorKey, dir, anchorPos) {
+  var pp = anchorKey.split(',');
+  var r = +pp[0], c = +pp[1];
+  var keys = [];
+  for (var i = 0; i < 3; i++) {
+    var off = i - anchorPos;
+    var nr = r, nc = c;
+    if (dir === 'h') nc = c + off;
+    else nr = r + off;
+    if (nr < 0 || nc < 0) return null; // out of bounds
+    keys.push(nr + ',' + nc);
+  }
+  return keys;
+}
+
+function hasUnrelatedNeighbor(cellKey, newKeys, occupiedKeys) {
+  // The new cell shouldn't sit immediately adjacent (above/below/left/right) to a cell
+  // that belongs to a different equation, except for the anchor itself.
+  var pp = cellKey.split(',');
+  var r = +pp[0], c = +pp[1];
+  var neighbors = [
+    (r-1) + ',' + c, (r+1) + ',' + c,
+    r + ',' + (c-1), r + ',' + (c+1)
+  ];
+  for (var ni = 0; ni < neighbors.length; ni++) {
+    var nkey = neighbors[ni];
+    if (newKeys.indexOf(nkey) !== -1) continue; // own equation neighbor — fine
+    if (occupiedKeys[nkey]) return true;
+  }
+  return false;
+}
+
+function pickValuesForArcade(anchorPos, anchorValue, cfg) {
+  // Pick values v0, v1, v2 such that v0 op v1 = v2, with the anchor at anchorPos.
+  var allowMulDiv = !!(state && state.settings && state.settings.mulDiv);
+  for (var attempt = 0; attempt < 200; attempt++) {
+    var op;
+    if (allowMulDiv) {
+      if (R() < 0.5) op = R() < cfg.minusChance ? '−' : '+';
+      else op = R() < 0.5 ? '×' : '÷';
+    } else {
+      op = R() < cfg.minusChance ? '−' : '+';
+    }
+    var v0, v1, v2;
+
+    if (op === '+' || op === '−') {
+      if (anchorPos === 0) {
+        v0 = anchorValue;
+        v1 = 1 + Math.floor(R() * Math.min(cfg.poolMax, cfg.maxNum - 1));
+        v2 = applyOp(v0, op, v1);
+      } else if (anchorPos === 1) {
+        v1 = anchorValue;
+        v0 = 1 + Math.floor(R() * Math.min(cfg.poolMax, cfg.maxNum - 1));
+        v2 = applyOp(v0, op, v1);
+      } else {
+        v2 = anchorValue;
+        v0 = 1 + Math.floor(R() * Math.min(cfg.poolMax, cfg.maxNum - 1));
+        v1 = (op === '+') ? v2 - v0 : v0 - v2;
+      }
+    } else if (op === '×') {
+      // v0 × v1 = v2; need v2 ≤ maxNum
+      var maxFactor = Math.floor(Math.sqrt(cfg.maxNum));
+      if (anchorPos === 0) {
+        v0 = anchorValue;
+        if (v0 < 2) continue;
+        var maxV1 = Math.floor(cfg.maxNum / v0);
+        if (maxV1 < 2) continue;
+        v1 = 2 + rndInt(Math.max(1, maxV1 - 1));
+        v2 = v0 * v1;
+      } else if (anchorPos === 1) {
+        v1 = anchorValue;
+        if (v1 < 2) continue;
+        var maxV0 = Math.floor(cfg.maxNum / v1);
+        if (maxV0 < 2) continue;
+        v0 = 2 + rndInt(Math.max(1, maxV0 - 1));
+        v2 = v0 * v1;
+      } else {
+        v2 = anchorValue;
+        if (v2 < 4) continue; // need at least 2×2 = 4
+        // Find divisors of v2 to use as v0
+        var divisors = [];
+        for (var d = 2; d <= maxFactor; d++) if (v2 % d === 0) divisors.push(d);
+        if (divisors.length === 0) continue;
+        v0 = divisors[rndInt(divisors.length)];
+        v1 = v2 / v0;
+      }
+    } else if (op === '÷') {
+      // v0 ÷ v1 = v2; equivalent to v0 = v1 × v2
+      if (anchorPos === 0) {
+        v0 = anchorValue;
+        if (v0 < 4) continue;
+        var divs = [];
+        for (var dd = 2; dd <= Math.floor(Math.sqrt(v0)); dd++) if (v0 % dd === 0) divs.push(dd);
+        if (divs.length === 0) continue;
+        v1 = divs[rndInt(divs.length)];
+        v2 = v0 / v1;
+      } else if (anchorPos === 1) {
+        v1 = anchorValue;
+        if (v1 < 2) continue;
+        var maxQ = Math.floor(cfg.maxNum / v1);
+        if (maxQ < 2) continue;
+        v2 = 2 + rndInt(Math.max(1, maxQ - 1));
+        v0 = v1 * v2;
+      } else {
+        v2 = anchorValue;
+        if (v2 < 2) continue;
+        var maxDivisor = Math.floor(cfg.maxNum / v2);
+        if (maxDivisor < 2) continue;
+        v1 = 2 + rndInt(Math.max(1, maxDivisor - 1));
+        v0 = v1 * v2;
+      }
+    }
+
+    if (!Number.isInteger(v0) || v0 < 1 || v0 > cfg.maxNum) continue;
+    if (!Number.isInteger(v1) || v1 < 1 || v1 > cfg.maxNum) continue;
+    if (!Number.isInteger(v2) || v2 < 1 || v2 > cfg.maxNum) continue;
+    // Verify the equation actually holds (defensive)
+    if (applyOp(v0, op, v1) !== v2) continue;
+    return { values: [v0, v1, v2], op: op };
+  }
+  return null;
+}
+
+function installArcadeEquation(oldEqIdx, removedCells, newKeys, anchorPos, anchorKey, vop, givenPos, emptyPos) {
+  var p = state.data;
+  delete state.settledCells[anchorKey];
+  // Remember where collapse happened for shockwave + slide-from origin
+  var anchorPP = anchorKey.split(',');
+  var anchorR = +anchorPP[0], anchorC = +anchorPP[1];
+  // Remove cells that no longer belong to any active equation
+  for (var rc = 0; rc < removedCells.length; rc++) {
+    var rk = removedCells[rc];
+    delete p.puzzle.values[rk];
+    delete p.givens[rk];
+    delete state.placed[rk];
+    delete state.settledCells[rk];
+    var idxInList = p.layout.cells.indexOf(rk);
+    if (idxInList >= 0) p.layout.cells.splice(idxInList, 1);
+  }
+  // If caller didn't specify, fall back to random choice (legacy callers)
+  if (givenPos === undefined || emptyPos === undefined) {
+    var nonAnchorPositions = [];
+    for (var npi = 0; npi < newKeys.length; npi++) if (npi !== anchorPos) nonAnchorPositions.push(npi);
+    shuffle(nonAnchorPositions);
+    givenPos = nonAnchorPositions[0];
+    emptyPos = nonAnchorPositions[1];
+  }
+
+  // Add new cells
+  for (var nki = 0; nki < newKeys.length; nki++) {
+    var nk = newKeys[nki];
+    if (nki === anchorPos) continue;
+    if (p.layout.cells.indexOf(nk) === -1) p.layout.cells.push(nk);
+    p.puzzle.values[nk] = vop.values[nki];
+    delete state.placed[nk];
+    delete state.settledCells[nk];
+    if (nki === givenPos) {
+      p.givens[nk] = true;
+    } else {
+      delete p.givens[nk];
+    }
+    // Tag this cell as incoming so render's slide-in animation kicks in.
+    // Compute slide-from offset: cells slide IN from beyond the grid edge,
+    // along the equation's growth direction, with a slight outward arc.
+    var nkPP = nk.split(',');
+    var nkR = +nkPP[0], nkC = +nkPP[1];
+    var dx = (nkC - anchorC) * 60; // slide horizontally if equation is horizontal
+    var dy = (nkR - anchorR) * 60; // slide vertically if equation is vertical
+    state.arcadeIncomingCells[nk] = { fromX: dx + 'px', fromY: dy + 'px' };
+  }
+  // Replace the old equation
+  p.layout.equations[oldEqIdx] = { cells: newKeys, orientation: (newKeys[0].split(',')[0] === newKeys[1].split(',')[0]) ? 'h' : 'v' };
+  p.puzzle.eqOps[oldEqIdx] = [vop.op];
+  delete state.clearedEqs[oldEqIdx];
+
+  // Bank update: add ONE tile for the empty cell only
+  state.bank.push(vop.values[emptyPos]);
+  state.bank.sort(function(a,b){ return a - b; });
+
+  recomputeBounds(p.layout);
+  state.visual = buildVisualGrid(p.layout, p.puzzle);
+
+  // Spawn a shockwave from the collapse center (the anchor cell's screen position)
+  // We need to compute screen coords AFTER the next render. Schedule for after.
+  var anchorKeyForShockwave = anchorKey;
+  setTimeout(function () {
+    spawnShockwave(anchorKeyForShockwave);
+  }, 50);
+}
+
+function spawnShockwave(anchorKey) {
+  var anchorEl = document.querySelector('[data-cell-key="' + anchorKey + '"]');
+  if (!anchorEl) return;
+  var rect = anchorEl.getBoundingClientRect();
+  var wave = document.createElement('div');
+  wave.className = 'shockwave';
+  wave.style.left = (rect.left + rect.width / 2) + 'px';
+  wave.style.top = (rect.top + rect.height / 2) + 'px';
+  document.body.appendChild(wave);
+  setTimeout(function () { if (wave.parentNode) wave.parentNode.removeChild(wave); }, 750);
+}
+
+function cleanupRemovedCells(removedCells, oldEqIdx) {
+  var p = state.data;
+  for (var rc = 0; rc < removedCells.length; rc++) {
+    var rk = removedCells[rc];
+    delete p.puzzle.values[rk];
+    delete p.givens[rk];
+    delete state.placed[rk];
+    delete state.settledCells[rk];
+    var idxInList = p.layout.cells.indexOf(rk);
+    if (idxInList >= 0) p.layout.cells.splice(idxInList, 1);
+  }
+  // Remove the equation entirely (mark with empty cells so it's skipped)
+  p.layout.equations[oldEqIdx] = { cells: [], orientation: 'h' };
+  p.puzzle.eqOps[oldEqIdx] = [];
+  delete state.clearedEqs[oldEqIdx];
+  recomputeBounds(p.layout);
+  state.visual = buildVisualGrid(p.layout, p.puzzle);
+}
+
+function recomputeBounds(layout) {
+  var maxR = 0, maxC = 0;
+  for (var ci = 0; ci < layout.cells.length; ci++) {
+    var pp = layout.cells[ci].split(',');
+    if (+pp[0] > maxR) maxR = +pp[0];
+    if (+pp[1] > maxC) maxC = +pp[1];
+  }
+  layout.rows = maxR + 1;
+  layout.cols = maxC + 1;
+}
+
+function flashScoreBump() {
+  setTimeout(function () {
+    var el = document.querySelector('.score-display');
+    if (el) {
+      el.classList.add('bump');
+      setTimeout(function () { if (el) el.classList.remove('bump'); }, 250);
+    }
+  }, 50);
+}
+
+function spawnScorePop(eq, points, isCrossmath) {
+  // Find the visual center of the equation
+  var midKey = eq.cells[1];
+  var visualKey = parseInt(midKey.split(',')[0]) * 2 + ',' + parseInt(midKey.split(',')[1]) * 2;
+  setTimeout(function () {
+    var cellEl = document.querySelector('[data-cell-key="' + midKey + '"]');
+    if (!cellEl) return;
+    var rect = cellEl.getBoundingClientRect();
+    var pop = document.createElement('div');
+    pop.className = 'score-pop' + (isCrossmath ? ' crossmath' : '');
+    pop.style.left = (rect.left + rect.width / 2) + 'px';
+    pop.style.top = (rect.top + rect.height / 2) + 'px';
+    pop.textContent = (isCrossmath ? '✦ +' : '+') + points + (state.multiplier > 1 ? ' ×' + state.multiplier : '');
+    document.body.appendChild(pop);
+    setTimeout(function () { if (pop.parentNode) pop.parentNode.removeChild(pop); }, 1100);
+  }, 100);
+}
+
+function animateEquationClear(eq, isCrossmath, delayMs) {
+  delayMs = delayMs || 0;
+  setTimeout(function () {
+    // Phase 1: flash all cells in the equation (briefly scale up + bright green glow)
+    var cellEls = [];
+    for (var ci = 0; ci < eq.cells.length; ci++) {
+      var cellEl = document.querySelector('[data-cell-key="' + eq.cells[ci] + '"]');
+      if (cellEl) { cellEl.classList.add('flashing'); cellEls.push(cellEl); }
+    }
+    // Phase 2: spark burst from center
+    var midKey = eq.cells[1];
+    var midEl = document.querySelector('[data-cell-key="' + midKey + '"]');
+    if (midEl) {
+      var rect = midEl.getBoundingClientRect();
+      spawnSparkBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, isCrossmath ? 24 : 14);
+    }
+    // Phase 3: after the flash finishes (~350ms), trigger the collapse animation
+    setTimeout(function () {
+      for (var i = 0; i < cellEls.length; i++) {
+        cellEls[i].classList.remove('flashing');
+        cellEls[i].classList.add('collapsing');
+      }
+    }, 320);
+  }, delayMs);
+}
+
+function spawnSparkBurst(x, y, count) {
+  var burst = document.createElement('div');
+  burst.className = 'spark-burst';
+  burst.style.left = x + 'px';
+  burst.style.top = y + 'px';
+  document.body.appendChild(burst);
+  var colors = ['#6a8e3d', '#c89849', '#ffce3a', '#5fe663', '#ffffff'];
+  for (var i = 0; i < count; i++) {
+    var ang = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+    var dist = 50 + Math.random() * 40;
+    var p = document.createElement('div');
+    p.className = 'particle';
+    p.style.setProperty('--px', (Math.cos(ang) * dist) + 'px');
+    p.style.setProperty('--py', (Math.sin(ang) * dist) + 'px');
+    p.style.setProperty('--p-color', colors[i % colors.length]);
+    p.style.animationDelay = (Math.random() * 0.05) + 's';
+    burst.appendChild(p);
+  }
+  setTimeout(function () { if (burst.parentNode) burst.parentNode.removeChild(burst); }, 1100);
+}
+function triggerShake() {
+  state.shake = true; render();
+  setTimeout(function () { state.shake = false; render(); }, 500);
+}
+
+/* ========================================================================
+   PLACEMENT
+======================================================================== */
+function handleCellTap(key) {
+  if (isSolved()) return;
+  if (state.data.givens[key]) return;
+  if (state.settledCells[key]) return; // locked
+  if (state.placed[key] != null) {
+    pushHistory();
+    delete state.placed[key];
+    state.selected = key;
+    state.lastFilledKey = null;
+    render(); checkAndCelebrate();
+  } else {
+    state.selected = key;
+    render();
+  }
+}
+function handleBankTap(num) {
+  if (isSolved()) return;
+  var target = state.selected;
+  // No auto-pick: if no valid cell is selected, tapping a bank number does nothing.
+  // The user picks where each number goes.
+  if (target == null || state.data.givens[target] || state.placed[target] != null || state.settledCells[target]) {
+    // Visual nudge: briefly pulse the bank tile to indicate "select a cell first"
+    var tile = document.querySelector('.bank-tile[data-num="' + num + '"]');
+    if (tile) {
+      tile.classList.add('reject');
+      setTimeout(function() { if (tile) tile.classList.remove('reject'); }, 320);
+    }
+    return;
+  }
+  // Refuse if all copies of `num` are already placed elsewhere on the board.
+  var totalInBank = 0;
+  for (var bi = 0; bi < state.bank.length; bi++) if (state.bank[bi] === num) totalInBank++;
+  var alreadyPlaced = 0;
+  for (var pk in state.placed) if (state.placed[pk] === num) alreadyPlaced++;
+  if (alreadyPlaced >= totalInBank) {
+    var tile2 = document.querySelector('.bank-tile[data-num="' + num + '"]');
+    if (tile2) {
+      tile2.classList.add('reject');
+      setTimeout(function() { if (tile2) tile2.classList.remove('reject'); }, 320);
+    }
+    flashCellsWithValue(num);
+    return;
+  }
+  pushHistory();
+  if (state.placed[target] === num) { state.history.pop(); return; }
+  state.placed[target] = num;
+  state.lastFilledKey = target;
+  // Clear selection — user picks the next cell themselves
+  state.selected = null;
+  soundClick();
+  render();
+  detectEquationClears(target);
+  checkAndCelebrate();
+}
+
+function flashCellsWithValue(num) {
+  // Find all cells on the board with this value (placed or given) and flash them
+  if (!state.data) return;
+  var keys = [];
+  for (var i = 0; i < state.data.layout.cells.length; i++) {
+    var k = state.data.layout.cells[i];
+    var v = cellValue(k);
+    if (v === num) keys.push(k);
+  }
+  for (var ki = 0; ki < keys.length; ki++) {
+    var cellEl = document.querySelector('[data-cell-key="' + keys[ki] + '"]');
+    if (cellEl) {
+      cellEl.classList.add('value-locator');
+      (function(el) {
+        setTimeout(function () { if (el) el.classList.remove('value-locator'); }, 700);
+      })(cellEl);
+    }
+  }
+}
+
+/* ========================================================================
+   EQUATION STATUS
+======================================================================== */
+function computeCellStatus() {
+  var status = {};
+  if (!state.data) return status;
+  var p = state.data;
+  for (var ei = 0; ei < p.layout.equations.length; ei++) {
+    var eq = p.layout.equations[ei];
+    if (!eq.cells || eq.cells.length === 0) continue; // removed in arcade mode
+    var ops = p.puzzle.eqOps[ei];
+    var vals = []; var allFilled = true;
+    for (var ci = 0; ci < eq.cells.length; ci++) {
+      var v = cellValue(eq.cells[ci]);
+      if (v == null) { allFilled = false; break; }
+      vals.push(v);
+    }
+    if (!allFilled) continue;
+    var ok = applyChain(vals.slice(0, vals.length - 1), ops) === vals[vals.length - 1];
+    var ns = ok ? 'correct' : 'wrong';
+    for (var ci2 = 0; ci2 < eq.cells.length; ci2++) {
+      var k = eq.cells[ci2];
+      if (status[k] === 'wrong') continue;
+      if (ns === 'wrong' || !status[k]) status[k] = ns;
+    }
+  }
+  return status;
+}
+
+/* Cells related to the currently-selected one (in same equations) */
+function relatedCells() {
+  var rel = {};
+  if (!state.selected || !state.data) return rel;
+  var sel = state.selected;
+  for (var ei = 0; ei < state.data.layout.equations.length; ei++) {
+    var eq = state.data.layout.equations[ei];
+    if (eq.cells.indexOf(sel) === -1) continue;
+    for (var ci = 0; ci < eq.cells.length; ci++) {
+      if (eq.cells[ci] !== sel) rel[eq.cells[ci]] = true;
+    }
+  }
+  return rel;
+}
+
+/* ========================================================================
+   RENDERING
+======================================================================== */
+var app = document.getElementById('app');
+function el(tag, attrs) {
+  var e = document.createElement(tag);
+  if (attrs) {
+    for (var k in attrs) {
+      if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+      var v = attrs[k];
+      if (v == null || v === false) continue;
+      if (k === 'class') e.className = v;
+      else if (k === 'style') {
+        for (var sk in v) if (Object.prototype.hasOwnProperty.call(v, sk)) {
+          if (sk.indexOf('--') === 0) e.style.setProperty(sk, v[sk]);
+          else e.style[sk] = v[sk];
+        }
+      }
+      else if (k === 'data') {
+        for (var dk in v) e.setAttribute('data-' + dk, v[dk]);
+      }
+      else if (k === 'on') {
+        for (var ek in v) e.addEventListener(ek, v[ek]);
+      }
+      else e.setAttribute(k, v);
+    }
+  }
+  for (var i = 2; i < arguments.length; i++) {
+    var c = arguments[i];
+    if (c == null || c === false) continue;
+    if (Array.isArray(c)) {
+      for (var j = 0; j < c.length; j++) {
+        var cc = c[j];
+        if (cc == null || cc === false) continue;
+        e.appendChild(typeof cc === 'string' || typeof cc === 'number' ? document.createTextNode(String(cc)) : cc);
+      }
+    } else {
+      e.appendChild(typeof c === 'string' || typeof c === 'number' ? document.createTextNode(String(c)) : c);
+    }
+  }
+  return e;
+}
+
+function render() {
+  // Remove any stale overlays/modals from a prior render
+  var stale = document.querySelectorAll('.modal-overlay, .solved-overlay');
+  for (var si = 0; si < stale.length; si++) {
+    if (stale[si].parentNode) stale[si].parentNode.removeChild(stale[si]);
+  }
+  app.innerHTML = '';
+  app.appendChild(renderTopBar());
+  app.appendChild(renderDiff());
+  app.appendChild(renderTitle());
+  if (state.generating || !state.data) {
+    app.appendChild(el('div', { 'class': 'loading' }, 'Generating puzzle…'));
+    return;
+  }
+  if (state.settings.scoreMode) app.appendChild(renderScoreBar());
+  app.appendChild(renderGrid());
+  app.appendChild(renderBank());
+  app.appendChild(renderActions());
+  app.appendChild(renderBuildFooter());
+  if (state.showSolved) renderSolvedOverlay();
+  if (state.showStats) renderStatsModal();
+  if (state.showSettings) renderSettingsModal();
+  // Pop animation only fires on the render immediately after a placement.
+  // Clear so subsequent renders don't re-trigger it.
+  state.lastFilledKey = null;
+  // Same for arcade-incoming cells — clear after the slide-in animation has played.
+  // We clear immediately after this render is committed to the DOM; the CSS animation
+  // is `forwards`-filled so it stays at its end state visually.
+  if (state.arcadeIncomingCells && Object.keys(state.arcadeIncomingCells).length > 0) {
+    setTimeout(function () { state.arcadeIncomingCells = {}; }, 600);
+  }
+}
+
+function renderScoreBar() {
+  var bar = el('div', { 'class': 'score-bar' });
+  bar.appendChild(el('div', { 'class': 'score-label' }, 'SCORE'));
+  bar.appendChild(el('div', { 'class': 'score-display' },
+    state.score.toLocaleString()
+  ));
+  bar.appendChild(el('div', { style: { flex: '1' } }));
+  if (state.settings.arcadeMode) {
+    bar.appendChild(el('div', { 'class': 'score-label' }, 'CLEARS'));
+    bar.appendChild(el('div', { 'class': 'score-display', style: { minWidth: 'auto', color: 'var(--accent-gold)' } },
+      String(state.arcadeEqsSolved || 0)
+    ));
+  }
+  if (state.multiplier > 1 && Date.now() < state.comboExpiry) {
+    bar.appendChild(el('div', { 'class': 'multiplier-badge' }, '×' + state.multiplier));
+    var remaining = Math.max(0, state.comboExpiry - Date.now()) / 5000;
+    var fill = el('div', { 'class': 'combo-bar' });
+    fill.appendChild(el('div', {
+      'class': 'combo-bar-fill',
+      style: { width: (remaining * 100) + '%' }
+    }));
+    bar.appendChild(fill);
+  }
+  return bar;
+}
+
+function renderTopBar() {
+  var bar = el('div', { 'class': 'top-bar' });
+  var left = el('div', { 'class': 'top-bar-side' });
+  left.appendChild(el('button', {
+    'class': 'icon-btn', title: 'Undo',
+    disabled: state.history.length === 0 ? '' : null,
+    on: { click: undo }
+  }, '↶'));
+  bar.appendChild(left);
+  var center = el('div', { 'class': 'top-bar-side', style: { justifyContent: 'center' } });
+  center.appendChild(el('div', { 'class': 'timer-display', id: 'timer-display' }, formatTime(state.elapsed)));
+  bar.appendChild(center);
+  var right = el('div', { 'class': 'top-bar-side right' });
+  right.appendChild(el('button', { 'class': 'icon-btn', title: 'Stats', on: { click: function () { state.showStats = true; render(); } } }, '📊'));
+  right.appendChild(el('button', { 'class': 'icon-btn', title: 'Settings', on: { click: function () { state.showSettings = true; render(); } } }, '⚙'));
+  bar.appendChild(right);
+  return bar;
+}
+
+function renderDiff() {
+  var row = el('div', { 'class': 'diff-row' });
+  var keys = ['easy','medium','hard'];
+  for (var i = 0; i < keys.length; i++) {
+    (function(key) {
+      var cfg = DIFFICULTY[key];
+      var active = state.difficulty === key && !state.isDaily;
+      row.appendChild(el('button', {
+        'class': 'diff-pill',
+        style: {
+          color: active ? 'var(--bg-grid)' : cfg.color,
+          background: active ? cfg.color : 'transparent',
+          borderColor: cfg.color,
+          boxShadow: active ? '0 3px 0 ' + cfg.color + '55' : 'none'
+        },
+        on: { click: function () { startPuzzle(key, false); } }
+      }, cfg.label));
+    })(keys[i]);
+  }
+  // Daily pill
+  row.appendChild(el('button', {
+    'class': 'daily-pill' + (state.isDaily ? ' active' : ''),
+    on: { click: function () { startPuzzle(state.difficulty, true); } }
+  }, '✦ Daily'));
+  return row;
+}
+function renderTitle() {
+  var streak = state.stats.streak || 0;
+  return el('div', { 'class': 'title-area' },
+    el('h1', { 'class': 'title' }, 'Crossmath'),
+    el('div', {
+      'class': 'subtitle',
+      style: { color: DIFFICULTY[state.difficulty].color },
+      on: { click: function () { state.showStats = true; render(); } }
+    },
+      (state.isDaily ? 'Daily ' : '') + DIFFICULTY[state.difficulty].label + ' · ' + (state.stats[state.difficulty].solved || 0) + ' solved',
+      streak > 0 ? el('span', { 'class': 'streak-badge' }, '🔥 ' + streak) : null
+    )
+  );
+}
+
+function renderGrid() {
+  var v = state.visual;
+  var solved = isSolved();
+  var cellStatus = computeCellStatus();
+  var related = relatedCells();
+
+  var vw = window.innerWidth || 380;
+  var vh = window.innerHeight || 700;
+  var availW = vw - 12;
+  // Score bar adds ~36px when in score mode
+  var scoreBarReserve = state.settings.scoreMode ? 40 : 0;
+  // Bank reserves ~44px per row of tiles. With ~9 tiles per row on phone width.
+  var bankUniqueCount = 0;
+  if (state.bank) {
+    var seenBank = {};
+    for (var bi = 0; bi < state.bank.length; bi++) {
+      if (!seenBank[state.bank[bi]]) { seenBank[state.bank[bi]] = true; bankUniqueCount++; }
+    }
+  }
+  var bankRows = Math.max(1, Math.ceil(bankUniqueCount / 9));
+  var bankReserve = 44 * bankRows + 12; // +padding
+  var baseReserve = 190; // top bar + diff pills + title + actions + footer
+  var availH = vh - baseReserve - scoreBarReserve - bankReserve;
+  if (availH < 140) availH = 140;
+  var cellByW = Math.floor(availW / v.cols);
+  var cellByH = Math.floor(availH / v.rows);
+  // Aim for 44px max. Floor at 22px (small but visible — better than overflow which clips cells).
+  var cellSize = Math.min(44, cellByW, cellByH);
+  if (cellSize < 22) cellSize = 22;
+  var fontMain = Math.max(11, Math.round(cellSize * 0.50));
+  var fontOp   = Math.max(13, Math.round(cellSize * 0.55));
+
+  var grid = el('div', {
+    'class': 'grid',
+    style: {
+      gridTemplateColumns: 'repeat(' + v.cols + ', ' + cellSize + 'px)',
+      gridTemplateRows:    'repeat(' + v.rows + ', ' + cellSize + 'px)',
+      '--cell-size': cellSize + 'px',
+      '--font-main': fontMain + 'px',
+      '--font-op':   fontOp + 'px'
+    }
+  });
+  for (var key in v.cells) {
+    var spec = v.cells[key];
+    var p = key.split(',');
+    var vr = +p[0], vc = +p[1];
+    var cellEl;
+    if (spec.type === 'num') cellEl = renderNumCell(spec.cellKey, solved, cellStatus[spec.cellKey], related);
+    else if (spec.type === 'op') {
+      var opCls = 'cell op';
+      if (spec.symbol === '−' || spec.symbol === '÷') opCls += ' minus';
+      else if (spec.symbol === '×') opCls += ' multiply';
+      cellEl = el('div', { 'class': opCls }, spec.symbol);
+    }
+    else cellEl = el('div', { 'class': 'cell eq' }, '=');
+    cellEl.style.gridRow = (vr + 1).toString();
+    cellEl.style.gridColumn = (vc + 1).toString();
+    grid.appendChild(cellEl);
+  }
+  var wrap = el('div', { 'class': 'grid-wrap' + (state.shake ? ' shaking' : '') }, grid);
+  return wrap;
+}
+
+function renderNumCell(cellKey, solved, eqStatus, related) {
+  var isGiven = !!state.data.givens[cellKey];
+  var isSettled = !!state.settledCells[cellKey];
+  var v = cellValue(cellKey);
+  var isFilled = !isGiven && v != null;
+  var cls = 'cell num';
+  if (isGiven) cls += ' given';
+  else if (v != null) cls += ' filled';
+  else cls += ' empty';
+  if (isSettled) cls += ' settled';
+  if (solved) cls += ' solved';
+  else if (!isSettled && eqStatus === 'correct') cls += ' eq-correct';
+  else if (eqStatus === 'wrong') cls += ' eq-wrong';
+  if (related && related[cellKey] && !solved && !isSettled) cls += ' related';
+  if (state.selected === cellKey && !solved && !isGiven && !isSettled) cls += ' selected';
+  if (isFilled && state.lastFilledKey === cellKey) cls += ' pop';
+  var incoming = state.arcadeIncomingCells && state.arcadeIncomingCells[cellKey];
+  if (incoming) cls += ' arcade-incoming';
+  var data = { 'cell-key': cellKey };
+  if (isGiven) data.given = '1';
+  if (v != null) data.value = String(v);
+  var styleObj = null;
+  if (incoming) {
+    styleObj = { '--slide-from-x': incoming.fromX, '--slide-from-y': incoming.fromY };
+  }
+  var attrs = { 'class': cls, data: data };
+  if (styleObj) attrs.style = styleObj;
+  return el('div', attrs, v == null ? '' : String(v));
+}
+
+function renderBank() {
+  var wrap = el('div', { 'class': 'bank-wrap' });
+  // Consolidate by value: count remaining of each value in the bank vs. what's placed
+  var counts = {};        // value -> total in bank
+  var firstIdx = {};      // value -> first index seen (for stable sort)
+  for (var i = 0; i < state.bank.length; i++) {
+    var n = state.bank[i];
+    counts[n] = (counts[n] || 0) + 1;
+    if (firstIdx[n] === undefined) firstIdx[n] = i;
+  }
+  var placedCounts = {};
+  for (var pk in state.placed) {
+    var pv = state.placed[pk];
+    placedCounts[pv] = (placedCounts[pv] || 0) + 1;
+  }
+  var unique = Object.keys(counts).sort(function(a,b) { return (+a) - (+b); });
+
+  // Hint highlight: only the value matching state.hintNumber
+  var hintVal = null;
+  if (state.hintNumber != null) {
+    var alreadyPlaced = state.hintCellKey != null && state.placed[state.hintCellKey] === state.hintNumber;
+    if (!alreadyPlaced) hintVal = state.hintNumber;
+  }
+
+  for (var ui = 0; ui < unique.length; ui++) {
+    var num = +unique[ui];
+    var total = counts[num];
+    var placed = placedCounts[num] || 0;
+    var remaining = total - placed;
+    var exhausted = remaining <= 0;
+    var cls = 'bank-tile';
+    if (exhausted) cls += ' exhausted';
+    if (num === hintVal && !exhausted) cls += ' hint-highlight';
+    var children = [String(num)];
+    if (total > 1) children.push(el('span', { 'class': 'count-badge' }, '×' + remaining));
+    wrap.appendChild(el('div', {
+      'class': cls,
+      data: { num: String(num) }
+    }, children));
+  }
+  return wrap;
+}
+
+function detectStuckState() {
+  // Returns true if there's any non-given empty cell whose required value isn't available in the bank.
+  if (!state.data) return false;
+  var p = state.data;
+  var bankCounts = {};
+  for (var bi = 0; bi < state.bank.length; bi++) bankCounts[state.bank[bi]] = (bankCounts[state.bank[bi]] || 0) + 1;
+  var placedCounts = {};
+  for (var pk in state.placed) placedCounts[state.placed[pk]] = (placedCounts[state.placed[pk]] || 0) + 1;
+  for (var ci = 0; ci < p.layout.cells.length; ci++) {
+    var k = p.layout.cells[ci];
+    if (p.givens[k] || st_settled(k) || state.placed[k] != null) continue;
+    var need = p.puzzle.values[k];
+    if ((bankCounts[need] || 0) - (placedCounts[need] || 0) <= 0) return true;
+  }
+  return false;
+}
+function st_settled(k) { return !!state.settledCells[k]; }
+
+function fixBank() {
+  // Last-resort recovery: clear any wrong placements, then reset bank to what the puzzle needs.
+  var p = state.data;
+  // Drop any placement whose value doesn't match puzzle.values
+  for (var pk in state.placed) {
+    if (state.placed[pk] !== p.puzzle.values[pk]) delete state.placed[pk];
+  }
+  // Rebuild bank from scratch: one tile per non-given cell + decoys
+  var bank = [];
+  for (var ci = 0; ci < p.layout.cells.length; ci++) {
+    var k = p.layout.cells[ci];
+    if (!p.givens[k]) bank.push(p.puzzle.values[k]);
+  }
+  if (p.decoys) for (var di = 0; di < p.decoys.length; di++) bank.push(p.decoys[di]);
+  bank.sort(function(a,b){return a-b;});
+  state.bank = bank;
+  state.lastFilledKey = null;
+  render();
+}
+
+function copyDebugInfo() {
+  var p = state.data;
+  if (!p) return;
+  var info = {
+    build: (document.querySelector('meta[name="build"]') || {getAttribute: function(){return 'unknown';}}).getAttribute('content'),
+    difficulty: state.difficulty,
+    settings: state.settings,
+    layout: { cells: p.layout.cells, equations: p.layout.equations },
+    puzzleValues: p.puzzle.values,
+    eqOps: p.puzzle.eqOps,
+    givens: p.givens,
+    decoys: p.decoys,
+    bank: state.bank,
+    placed: state.placed,
+    settledCells: state.settledCells,
+    clearedEqs: state.clearedEqs
+  };
+  var text = JSON.stringify(info, null, 2);
+  // Try to copy
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+  } catch (e) {}
+  alert('Debug info copied to clipboard. Paste it in chat to send to Claude.');
+}
+
+function renderActions() {
+  var wrap = el('div', { 'class': 'actions' });
+  var hasWrong = false;
+  var status = computeCellStatus();
+  for (var k in status) if (status[k] === 'wrong') { hasWrong = true; break; }
+  var stuck = detectStuckState();
+  var emptyLeft = countEmptyCells();
+
+  var hintAttrs = {
+    'class': 'action-btn hint',
+    style: { color: state.hintUsed ? 'var(--ink-soft)' : DIFFICULTY[state.difficulty].color, opacity: state.hintUsed ? 0.5 : 1 },
+    on: { click: useHint }
+  };
+  if (state.hintUsed) hintAttrs.disabled = 'disabled';
+  var row = el('div', { 'class': 'action-row' },
+    el('button', { 'class': 'action-btn', on: { click: reset } }, 'Reset'),
+    hasWrong ? el('button', { 'class': 'action-btn danger', on: { click: clearWrong } }, 'Clear ✗') : null,
+    el('button', hintAttrs, state.hintUsed ? 'Hint used' : 'Hint ✦'),
+    el('button', { 'class': 'action-btn', on: { click: newPuzzle } }, 'Skip ↻')
+  );
+  wrap.appendChild(row);
+  // Diagnostic row — always visible so the user can recover/debug regardless of detection
+  var stuckRow = el('div', { 'class': 'action-row', style: { marginTop: '4px' } },
+    el('button', {
+      'class': 'action-btn' + (stuck ? ' danger' : ''),
+      style: { fontWeight: 700, opacity: stuck ? 1 : 0.6 },
+      on: { click: fixBank }
+    }, '⚠ Fix bank'),
+    el('button', {
+      'class': 'action-btn',
+      style: { opacity: 0.7 },
+      on: { click: copyDebugInfo }
+    }, 'Copy debug')
+  );
+  wrap.appendChild(stuckRow);
+  return wrap;
+}
+
+function renderBuildFooter() {
+  var meta = document.querySelector('meta[name="build"]');
+  var version = (meta && meta.getAttribute('content')) || 'unknown';
+  return el('div', { 'class': 'build-footer' }, version);
+}
+
+/* ========================================================================
+   SOLVED OVERLAY
+======================================================================== */
+function renderSolvedOverlay() {
+  var bestTime = state.stats[state.difficulty].bestTime;
+  var isNewBest = bestTime === state.elapsed;
+  var children = [
+    el('div', { 'class': 'trophy-icon' }, '🏆'),
+    el('div', { 'class': 'trophy-text' }, 'Solved!'),
+    el('div', { 'class': 'trophy-stats' },
+      'Time: ', el('strong', null, formatTime(state.elapsed)),
+      isNewBest ? ' · NEW BEST!' : ''
+    )
+  ];
+  if (state.settings.scoreMode) {
+    var fs = state.lastFinalScore || 0;
+    var bs = state.stats[state.difficulty].bestScore || 0;
+    var isNewBestScore = fs === bs && fs > 0;
+    children.push(el('div', { 'class': 'trophy-stats' },
+      'Score: ', el('strong', { style: { fontSize: '20px', color: 'var(--accent-gold)' } }, fs.toLocaleString()),
+      isNewBestScore ? ' · NEW HIGH!' : ''
+    ));
+    children.push(el('div', { 'class': 'trophy-stats' },
+      'Clears: ', el('strong', null, Object.keys(state.clearedEqs).length),
+      ' · Hints: ', el('strong', null, state.hintsUsedCount),
+      ' · Resets: ', el('strong', null, state.resetsUsedCount)
+    ));
+  }
+  children.push(el('div', null,
+    el('button', { 'class': 'next-btn', on: { click: function () { state.showSolved = false; newPuzzle(); } } }, 'Next →'),
+    el('button', { 'class': 'secondary-btn', on: { click: function () { state.showSolved = false; render(); } } }, 'Close')
+  ));
+  var card = el.apply(null, ['div', { 'class': 'trophy-card' }].concat(children));
+  var overlay = el('div', { 'class': 'solved-overlay' }, card);
+  document.body.appendChild(overlay);
+  setTimeout(function () { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); state.showSolved = false; }, 8000);
+}
+
+/* ========================================================================
+   STATS MODAL
+======================================================================== */
+function renderStatsModal() {
+  var s = state.stats;
+  var modal = el('div', { 'class': 'modal' },
+    el('h2', null, 'Stats'),
+    el('div', { 'class': 'row' }, el('span', { 'class': 'label' }, 'Streak'), el('span', { 'class': 'value' }, '🔥 ' + (s.streak || 0))),
+    el('div', { 'class': 'row' }, el('span', { 'class': 'label' }, 'Easy solved'), el('span', { 'class': 'value' }, s.easy.solved || 0)),
+    el('div', { 'class': 'row' }, el('span', { 'class': 'label' }, 'Easy best'), el('span', { 'class': 'value' }, s.easy.bestTime != null ? formatTime(s.easy.bestTime) : '—')),
+    el('div', { 'class': 'row' }, el('span', { 'class': 'label' }, 'Medium solved'), el('span', { 'class': 'value' }, s.medium.solved || 0)),
+    el('div', { 'class': 'row' }, el('span', { 'class': 'label' }, 'Medium best'), el('span', { 'class': 'value' }, s.medium.bestTime != null ? formatTime(s.medium.bestTime) : '—')),
+    el('div', { 'class': 'row' }, el('span', { 'class': 'label' }, 'Hard solved'), el('span', { 'class': 'value' }, s.hard.solved || 0)),
+    el('div', { 'class': 'row' }, el('span', { 'class': 'label' }, 'Hard best'), el('span', { 'class': 'value' }, s.hard.bestTime != null ? formatTime(s.hard.bestTime) : '—')),
+    el('div', { 'class': 'close-row' },
+      el('button', { 'class': 'secondary-btn', on: { click: function () { state.showStats = false; render(); } } }, 'Close'))
+  );
+  var overlay = el('div', { 'class': 'modal-overlay', on: { click: function (e) { if (e.target === overlay) { state.showStats = false; render(); } } } }, modal);
+  document.body.appendChild(overlay);
+}
+
+/* ========================================================================
+   SETTINGS MODAL
+======================================================================== */
+function renderSettingsModal() {
+  var modal = el('div', { 'class': 'modal' },
+    el('h2', null, 'Settings'),
+    el('div', { 'class': 'row' },
+      el('span', { 'class': 'label' }, 'Sound'),
+      el('button', {
+        'class': 'toggle' + (state.settings.sound ? ' on' : ''),
+        on: { click: function () { state.settings.sound = !state.settings.sound; saveSettings(); render(); } }
+      })
+    ),
+    el('div', { 'class': 'row' },
+      el('span', { 'class': 'label' }, 'Dark mode'),
+      el('button', {
+        'class': 'toggle' + (state.settings.dark ? ' on' : ''),
+        on: { click: function () { state.settings.dark = !state.settings.dark; saveSettings(); applyTheme(); render(); } }
+      })
+    ),
+    el('div', { 'class': 'row' },
+      el('span', { 'class': 'label' }, 'Score mode'),
+      el('button', {
+        'class': 'toggle' + (state.settings.scoreMode ? ' on' : ''),
+        on: { click: function () {
+          state.settings.scoreMode = !state.settings.scoreMode;
+          if (!state.settings.scoreMode) state.settings.arcadeMode = false;
+          saveSettings();
+          if (state.data) startPuzzle(state.difficulty, state.isDaily);
+          else render();
+        } }
+      })
+    ),
+    el('div', { 'class': 'row' },
+      el('span', { 'class': 'label' }, 'Arcade mode'),
+      el('button', {
+        'class': 'toggle' + (state.settings.arcadeMode ? ' on' : ''),
+        on: { click: function () {
+          state.settings.arcadeMode = !state.settings.arcadeMode;
+          if (state.settings.arcadeMode) state.settings.scoreMode = true;
+          saveSettings();
+          if (state.data) startPuzzle(state.difficulty, state.isDaily);
+          else render();
+        } }
+      })
+    ),
+    el('div', { 'class': 'row' },
+      el('span', { 'class': 'label' }, 'Multiply & divide ×÷'),
+      el('button', {
+        'class': 'toggle' + (state.settings.mulDiv ? ' on' : ''),
+        on: { click: function () {
+          state.settings.mulDiv = !state.settings.mulDiv;
+          saveSettings();
+          if (state.data) startPuzzle(state.difficulty, state.isDaily);
+          else render();
+        } }
+      })
+    ),
+    el('div', { 'class': 'row' },
+      el('span', { 'class': 'label' }, 'Reset stats'),
+      el('button', {
+        'class': 'secondary-btn',
+        style: { color: 'var(--accent-red)', borderColor: 'var(--accent-red)' },
+        on: { click: function () {
+          if (confirm('Reset all stats and streak?')) {
+            state.stats = { easy: {solved:0,bestTime:null}, medium: {solved:0,bestTime:null}, hard: {solved:0,bestTime:null}, streak: 0, lastSolveDate: null, dailySolved: {} };
+            saveStats(); render();
+          }
+        } }
+      }, 'Reset')
+    ),
+    el('div', { 'class': 'close-row' },
+      el('button', { 'class': 'secondary-btn', on: { click: function () { state.showSettings = false; render(); } } }, 'Close'))
+  );
+  var overlay = el('div', { 'class': 'modal-overlay', on: { click: function (e) { if (e.target === overlay) { state.showSettings = false; render(); } } } }, modal);
+  document.body.appendChild(overlay);
+}
+
+/* ========================================================================
+   FIREWORKS
+======================================================================== */
+function launchFireworks() {
+  if (document.querySelector('.fireworks')) return;
+  var container = document.createElement('div');
+  container.className = 'fireworks';
+  document.body.appendChild(container);
+  var BURST_COUNT = 14, SPARKS_PER_BURST = 44, SHOW_DURATION = 5500;
+  var vw = window.innerWidth || 380, vh = window.innerHeight || 700;
+  var BASE_RADIUS = Math.min(vw, vh) * 0.32;
+  for (var b = 0; b < BURST_COUNT; b++) {
+    (function (i) {
+      var delay = (i * 280 + Math.random() * 180);
+      var bx = 50 + Math.random() * (vw - 100);
+      var by = 60 + Math.random() * (vh * 0.55);
+      var color = FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)];
+      var launchFrom = vh - by;
+      var fw = document.createElement('div');
+      fw.className = 'firework';
+      fw.style.setProperty('--burst-x', bx + 'px');
+      fw.style.setProperty('--burst-y', by + 'px');
+      fw.style.setProperty('--burst-color', color);
+      fw.style.setProperty('--launch-from', launchFrom + 'px');
+      fw.style.animationDelay = (delay / 1000) + 's';
+      var rocket = document.createElement('div');
+      rocket.className = 'rocket';
+      rocket.style.animationDelay = (delay / 1000) + 's';
+      fw.appendChild(rocket);
+      var flash = document.createElement('div');
+      flash.className = 'flash';
+      flash.style.animationDelay = ((delay + 600) / 1000) + 's';
+      fw.appendChild(flash);
+      for (var s = 0; s < SPARKS_PER_BURST; s++) {
+        var ang = (s / SPARKS_PER_BURST) * Math.PI * 2 + Math.random() * 0.25;
+        var radius = BASE_RADIUS * (0.7 + Math.random() * 0.6);
+        var spark = document.createElement('div');
+        spark.className = 'spark';
+        spark.style.setProperty('--sx', (Math.cos(ang) * radius) + 'px');
+        spark.style.setProperty('--sy', (Math.sin(ang) * radius) + 'px');
+        spark.style.setProperty('--burst-color', Math.random() < 0.3 ? '#ffffff' : color);
+        spark.style.animationDelay = ((delay + 600 + Math.random() * 60) / 1000) + 's';
+        fw.appendChild(spark);
+      }
+      container.appendChild(fw);
+    })(b);
+  }
+  setTimeout(function () { if (container.parentNode) container.parentNode.removeChild(container); }, SHOW_DURATION);
+}
+
+/* ========================================================================
+   DRAG AND TAP — touch + mouse, with hold delay
+======================================================================== */
+var dragState = null;
+var pendingPress = null;
+var pressDownTime = 0;
+
+function findInteractiveTarget(target) {
+  if (!target || !target.closest) return null;
+  var bankTile = target.closest('.bank-tile');
+  if (bankTile && !bankTile.classList.contains('exhausted')) {
+    return { kind: 'bank', num: +bankTile.getAttribute('data-num') };
+  }
+  var cellEl = target.closest('[data-cell-key]');
+  if (cellEl && !cellEl.getAttribute('data-given') && !cellEl.classList.contains('settled')) {
+    var v = cellEl.getAttribute('data-value');
+    return { kind: 'cell', key: cellEl.getAttribute('data-cell-key'), num: v ? +v : null };
+  }
+  return null;
+}
+function startDrag(num, source, sourceKey, x, y) {
+  dragState = { num: num, source: source, sourceKey: sourceKey };
+  var ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  ghost.textContent = String(num);
+  document.body.appendChild(ghost);
+  dragState.ghost = ghost;
+  updateGhost(x, y);
+  if (source === 'cell') {
+    var ce = document.querySelector('[data-cell-key="' + sourceKey + '"]');
+    if (ce) ce.classList.add('dragging-from');
+  }
+}
+function findNearestDroppableCell(x, y) {
+  // Strict: try the exact element under the pointer first.
+  var target = document.elementFromPoint(x, y);
+  var cellEl = (target && target.closest) ? target.closest('[data-cell-key]') : null;
+  if (cellEl && !cellEl.getAttribute('data-given') && !cellEl.classList.contains('settled')) {
+    return cellEl;
+  }
+  // Forgiving: find the closest empty/draggable cell whose center is within tolerance.
+  // Tolerance: 60% of the cell size beyond the cell's bounding rect.
+  var allCells = document.querySelectorAll('[data-cell-key]');
+  var bestEl = null;
+  var bestDist = Infinity;
+  var maxToleranceFraction = 0.6;
+  for (var i = 0; i < allCells.length; i++) {
+    var el = allCells[i];
+    if (el.getAttribute('data-given')) continue;
+    if (el.classList.contains('settled')) continue;
+    var rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) continue;
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
+    // Distance from point to cell center
+    var dx = x - cx, dy = y - cy;
+    var d = Math.sqrt(dx*dx + dy*dy);
+    // Tolerance: cell radius + 60% of cell size
+    var maxRadius = (Math.max(rect.width, rect.height) / 2) + (rect.width * maxToleranceFraction);
+    if (d > maxRadius) continue;
+    if (d < bestDist) { bestDist = d; bestEl = el; }
+  }
+  return bestEl;
+}
+
+function updateGhost(x, y) {
+  if (!dragState) return;
+  dragState.ghost.style.left = x + 'px';
+  dragState.ghost.style.top = y + 'px';
+  var existing = document.querySelectorAll('.cell.drop-target');
+  for (var i = 0; i < existing.length; i++) existing[i].classList.remove('drop-target');
+  var cellEl = findNearestDroppableCell(x, y);
+  // Only highlight if the target cell is actually empty (not yet filled).
+  // For drag from another cell, swapping into a filled cell is also valid — show as drop target.
+  if (cellEl && !cellEl.getAttribute('data-given') && !cellEl.classList.contains('settled')) {
+    var hasValue = !!cellEl.getAttribute('data-value');
+    if (!hasValue || (dragState && dragState.source === 'cell' && cellEl.getAttribute('data-cell-key') !== dragState.sourceKey)) {
+      cellEl.classList.add('drop-target');
+    }
+  }
+}
+
+function endDrag(x, y) {
+  if (!dragState) return;
+  var cellEl = findNearestDroppableCell(x, y);
+  var changed = false;
+  if (cellEl && !cellEl.getAttribute('data-given') && !cellEl.classList.contains('settled')) {
+    var idx = cellEl.getAttribute('data-cell-key');
+    var tv = cellValue(idx);
+    if (tv == null) {
+      // Reject duplicate from-bank drag if all copies already placed
+      if (dragState.source === 'bank') {
+        var num = dragState.num;
+        var totalInBank = 0;
+        for (var bi = 0; bi < state.bank.length; bi++) if (state.bank[bi] === num) totalInBank++;
+        var alreadyPlaced = 0;
+        for (var pk in state.placed) if (state.placed[pk] === num) alreadyPlaced++;
+        if (alreadyPlaced >= totalInBank) {
+          if (dragState.ghost) dragState.ghost.remove();
+          dragState = null;
+          var marks0 = document.querySelectorAll('.dragging-from, .drop-target');
+          for (var m0 = 0; m0 < marks0.length; m0++) { marks0[m0].classList.remove('dragging-from'); marks0[m0].classList.remove('drop-target'); }
+          return;
+        }
+      }
+      pushHistory();
+      if (dragState.source === 'cell') delete state.placed[dragState.sourceKey];
+      state.placed[idx] = dragState.num;
+      state.lastFilledKey = idx;
+      state.selected = null;
+      soundClick();
+      changed = true;
+    } else if (dragState.source === 'cell' && idx !== dragState.sourceKey && !state.data.givens[idx]) {
+      pushHistory();
+      var other = state.placed[idx];
+      state.placed[idx] = dragState.num;
+      state.placed[dragState.sourceKey] = other;
+      state.lastFilledKey = idx;
+      soundClick();
+      changed = true;
+    }
+  } else if (dragState.source === 'cell') {
+    pushHistory();
+    delete state.placed[dragState.sourceKey];
+    state.selected = dragState.sourceKey;
+    changed = true;
+  }
+  if (dragState.ghost) dragState.ghost.remove();
+  var lastFilled = state.lastFilledKey;
+  dragState = null;
+  var marks = document.querySelectorAll('.dragging-from, .drop-target');
+  for (var m = 0; m < marks.length; m++) { marks[m].classList.remove('dragging-from'); marks[m].classList.remove('drop-target'); }
+  if (changed) {
+    render();
+    if (lastFilled) detectEquationClears(lastFilled);
+    checkAndCelebrate();
+  }
+}
+function cancelDrag() {
+  if (dragState && dragState.ghost) dragState.ghost.remove();
+  dragState = null;
+  var marks = document.querySelectorAll('.dragging-from, .drop-target');
+  for (var m = 0; m < marks.length; m++) { marks[m].classList.remove('dragging-from'); marks[m].classList.remove('drop-target'); }
+}
+
+function onPressDown(x, y, target) {
+  if (state.generating || !state.data || isSolved()) return false;
+  var info = findInteractiveTarget(target);
+  if (!info) return false;
+  pendingPress = { x: x, y: y, info: info };
+  pressDownTime = Date.now();
+  return true;
+}
+function onPressMove(x, y) {
+  if (dragState) {
+    updateGhost(x, y);
+    return true;
+  }
+  if (pendingPress && pendingPress.info.num != null) {
+    var dx = x - pendingPress.x, dy = y - pendingPress.y;
+    var moved = Math.sqrt(dx*dx + dy*dy);
+    // Bank tiles: if movement is dominantly horizontal before drag activates,
+    // assume user is scrolling the bank — bail out so the browser handles scroll.
+    if (pendingPress.info.kind === 'bank' && moved > DRAG_THRESHOLD
+        && Math.abs(dx) > Math.abs(dy) * 1.5
+        && Date.now() - pressDownTime < TAP_HOLD_MS) {
+      pendingPress = null;
+      return false;
+    }
+    if (moved > DRAG_THRESHOLD && Date.now() - pressDownTime >= TAP_HOLD_MS) {
+      var src = pendingPress.info.kind === 'bank' ? 'bank' : 'cell';
+      var srcKey = pendingPress.info.kind === 'cell' ? pendingPress.info.key : null;
+      startDrag(pendingPress.info.num, src, srcKey, x, y);
+      return true;
+    }
+  }
+  return false;
+}
+function onPressUp(x, y) {
+  if (dragState) { endDrag(x, y); pendingPress = null; return true; }
+  if (pendingPress) {
+    if (pendingPress.info.kind === 'bank') handleBankTap(pendingPress.info.num);
+    else if (pendingPress.info.kind === 'cell') handleCellTap(pendingPress.info.key);
+  }
+  pendingPress = null;
+  return false;
+}
+
+document.addEventListener('touchstart', function (e) {
+  if (e.touches.length !== 1) return;
+  var t = e.touches[0];
+  var captured = onPressDown(t.clientX, t.clientY, t.target);
+  // Only preventDefault for cell taps (which can't scroll) — bank tiles need
+  // to let the bank's horizontal scroll work until user actually drags.
+  if (captured && pendingPress && pendingPress.info.kind === 'cell') e.preventDefault();
+}, { passive: false });
+document.addEventListener('touchmove', function (e) {
+  if (e.touches.length !== 1) return;
+  var t = e.touches[0];
+  if (onPressMove(t.clientX, t.clientY)) e.preventDefault();
+}, { passive: false });
+document.addEventListener('touchend', function (e) {
+  if (e.changedTouches.length === 0) return;
+  var t = e.changedTouches[0];
+  if (onPressUp(t.clientX, t.clientY)) e.preventDefault();
+}, { passive: false });
+document.addEventListener('touchcancel', function () { cancelDrag(); pendingPress = null; });
+document.addEventListener('mousedown', function (e) { if (e.button !== 0) return; onPressDown(e.clientX, e.clientY, e.target); });
+document.addEventListener('mousemove', function (e) { onPressMove(e.clientX, e.clientY); });
+document.addEventListener('mouseup',   function (e) { onPressUp(e.clientX, e.clientY); });
+window.addEventListener('resize', function () { if (state.data) render(); });
+window.addEventListener('beforeunload', function () { stopTimer(); });
+
+/* Service Worker — inline via blob URL, caches the page so it works fully offline
+   even after first load. Falls back gracefully on browsers without SW support
+   or contexts that disallow it (e.g., file:// schemes). */
+function registerOfflineServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  // Service workers don't work on file:// — only http(s)://
+  if (location.protocol !== 'https:' && location.protocol !== 'http:') return;
+  try {
+    var swCode = "self.addEventListener('install', function(e){self.skipWaiting();});" +
+                 "self.addEventListener('activate', function(e){e.waitUntil(self.clients.claim());});" +
+                 "self.addEventListener('fetch', function(e){" +
+                 "  if (e.request.method !== 'GET') return;" +
+                 "  e.respondWith(caches.open('crossmath-v17').then(function(cache){" +
+                 "    return cache.match(e.request).then(function(hit){" +
+                 "      var fetchPromise = fetch(e.request).then(function(resp){" +
+                 "        if (resp && resp.status === 200) cache.put(e.request, resp.clone());" +
+                 "        return resp;" +
+                 "      }).catch(function(){return hit;});" +
+                 "      return hit || fetchPromise;" +
+                 "    });" +
+                 "  }));" +
+                 "});";
+    var blob = new Blob([swCode], { type: 'application/javascript' });
+    var url = URL.createObjectURL(blob);
+    navigator.serviceWorker.register(url).catch(function(){});
+  } catch (e) {}
+}
+
+/* Init */
+loadStats();
+applyTheme();
+startPuzzle('easy', false);
+registerOfflineServiceWorker();
+
+})();
+
+</script>
+</body>
+</html>
