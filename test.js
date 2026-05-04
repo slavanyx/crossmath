@@ -799,6 +799,19 @@ test('stacked arcade — no zombie equations after non-bottom-layer collapse', (
             `trial ${trial} cycle ${cycle}: eq[${i}] cell ${c} has no value`);
         }
       }
+      // No two active equations share the exact same cell set (would create
+      // a duplicate equation with possibly different op — user-reported case
+      // where spawn-after-zombie-collapse re-used the same vEq column).
+      const seen = new Map();
+      for (let i = 0; i < data.layout.equations.length; i++) {
+        const e = data.layout.equations[i];
+        if (!e.cells || e.cells.length === 0) continue;
+        const key = e.cells.slice().sort().join('|');
+        if (seen.has(key)) {
+          assert.fail(`trial ${trial} cycle ${cycle}: duplicate equation — eq[${seen.get(key)}] and eq[${i}] both cover ${key}`);
+        }
+        seen.set(key, i);
+      }
     }
   }
   state.data = null;
