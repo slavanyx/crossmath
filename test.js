@@ -567,6 +567,25 @@ test('arcade replacement loop — 50 moves keep state deducible & consistent', (
 /* ==========================================================================
    7b. STACKED ARCADE (v44) — Tetris-style layered puzzle
 ========================================================================== */
+test('stacked arcade — all cells have non-negative coords (v44e)', () => {
+  // Pre-v44e: when irregular column shifts produced minC < 0, the normalize
+  // step skipped (guard was `if (minC > 0)`), leaving cells at negative
+  // columns. CSS Grid then rendered them at "N from the end" instead of
+  // "column N", breaking the visual.
+  const exp = loadStub();
+  exp.state.settings.scoreMode = true;
+  exp.state.settings.arcadeMode = true;
+  for (let s = 0; s < 50; s++) {
+    const data = exp.generatePuzzle('easy');
+    if (!data) continue;
+    for (const k of data.layout.cells) {
+      const [r, c] = k.split(',').map(Number);
+      assert.ok(r >= 0, `sample ${s}: cell ${k} has negative row`);
+      assert.ok(c >= 0, `sample ${s}: cell ${k} has negative column`);
+    }
+  }
+});
+
 test('stacked arcade — layout has the right structure', () => {
   const exp = loadStub();
   exp.state.settings.scoreMode = true;

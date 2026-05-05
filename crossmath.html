@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#FBF6E8">
-<meta name="build" content="v44d-arcade-tetris-reconnect">
+<meta name="build" content="v44e-arcade-tetris-negcol-fix">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='42' fill='%23FBF6E8'/></svg>">
 
 <!-- PWA manifest inline as data URI -->
@@ -1403,13 +1403,16 @@ function genArcadeStack(cfg, numLayers) {
     if (!added) return null;
   }
 
-  // Normalize so leftmost column is 0
+  // Normalize so leftmost column is 0 (handles BOTH negative and positive minC).
+  // Bug pre-v44e: guard was `if (minC > 0)` which left negative-col layouts
+  // unnormalized. CSS Grid renders negative grid-column as "from the end",
+  // breaking the visual.
   var cells = Object.keys(occupied);
   var minC = Infinity;
   for (var ki = 0; ki < cells.length; ki++) {
     minC = Math.min(minC, +cells[ki].split(',')[1]);
   }
-  if (minC > 0) {
+  if (minC !== 0) {
     cells = cells.map(function (k) {
       var p = k.split(','); return (+p[0]) + ',' + ((+p[1]) - minC);
     });
