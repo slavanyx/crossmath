@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#FBF6E8">
-<meta name="build" content="v44e-arcade-tetris-negcol-fix">
+<meta name="build" content="v45-arcade-default">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='42' fill='%23FBF6E8'/></svg>">
 
 <!-- PWA manifest inline as data URI -->
@@ -1725,7 +1725,7 @@ var state = {
     streak: 0, lastSolveDate: null, dailySolved: {}
   },
   settings: {
-    sound: true, dark: false, scoreMode: false, arcadeMode: false, mulDiv: false
+    sound: true, dark: false, scoreMode: true, arcadeMode: true, mulDiv: false
   }
 };
 
@@ -1739,7 +1739,7 @@ function loadStats() {
       var p = JSON.parse(raw);
       if (p && typeof p === 'object') Object.assign(state.stats, p);
     }
-    var s = localStorage.getItem('cm-settings-v15');
+    var s = localStorage.getItem('cm-settings-v45');
     if (s) {
       var ss = JSON.parse(s);
       if (ss && typeof ss === 'object') Object.assign(state.settings, ss);
@@ -1750,7 +1750,7 @@ function saveStats() {
   try { localStorage.setItem('cm-stats-v15', JSON.stringify(state.stats)); } catch (e) {}
 }
 function saveSettings() {
-  try { localStorage.setItem('cm-settings-v15', JSON.stringify(state.settings)); } catch (e) {}
+  try { localStorage.setItem('cm-settings-v45', JSON.stringify(state.settings)); } catch (e) {}
 }
 
 /* ========================================================================

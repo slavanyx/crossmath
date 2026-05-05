@@ -433,7 +433,7 @@ test('mulDiv on — all four operators eventually appear, and ÷ stays integer',
 test('score mode — wrong-but-arithmetic placements do NOT mark cleared', () => {
   const exp = loadStub();
   // Hand-craft a one-equation scenario: 10 + 2 = 12
-  exp.state.settings.scoreMode = true;
+  exp.state.settings.scoreMode = true; exp.state.settings.arcadeMode = false;
   exp.state.data = {
     layout: { cells: ['0,0', '0,1', '0,2'], equations: [{ cells: ['0,0', '0,1', '0,2'], orientation: 'h' }] },
     puzzle: { values: { '0,0': 10, '0,1': 2, '0,2': 12 }, eqOps: [['+']] },
@@ -454,7 +454,7 @@ test('score mode — wrong-but-arithmetic placements do NOT mark cleared', () =>
 
 test('score mode — correct values DO mark cleared and award points', () => {
   const exp = loadStub();
-  exp.state.settings.scoreMode = true;
+  exp.state.settings.scoreMode = true; exp.state.settings.arcadeMode = false;
   exp.state.data = {
     layout: { cells: ['0,0', '0,1', '0,2'], equations: [{ cells: ['0,0', '0,1', '0,2'], orientation: 'h' }] },
     puzzle: { values: { '0,0': 10, '0,1': 2, '0,2': 12 }, eqOps: [['+']] },
@@ -573,7 +573,7 @@ test('stacked arcade — all cells have non-negative coords (v44e)', () => {
   // columns. CSS Grid then rendered them at "N from the end" instead of
   // "column N", breaking the visual.
   const exp = loadStub();
-  exp.state.settings.scoreMode = true;
+  exp.state.settings.scoreMode = true; exp.state.settings.arcadeMode = false;
   exp.state.settings.arcadeMode = true;
   for (let s = 0; s < 50; s++) {
     const data = exp.generatePuzzle('easy');
@@ -588,7 +588,7 @@ test('stacked arcade — all cells have non-negative coords (v44e)', () => {
 
 test('stacked arcade — layout has the right structure', () => {
   const exp = loadStub();
-  exp.state.settings.scoreMode = true;
+  exp.state.settings.scoreMode = true; exp.state.settings.arcadeMode = false;
   exp.state.settings.arcadeMode = true;
   for (let s = 0; s < 10; s++) {
     const data = exp.generatePuzzle('easy');
