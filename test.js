@@ -749,6 +749,7 @@ test('stacked arcade — no zombie equations after non-bottom-layer collapse', (
   state.settings.scoreMode = true;
   state.settings.arcadeMode = true;
 
+  let connectivityChecks = 0, connectivityGaps = 0;
   for (let trial = 0; trial < 15; trial++) {
     state.placed = {}; state.clearedEqs = {}; state.settledCells = {};
     const data = generatePuzzle('hard');
@@ -760,17 +761,22 @@ test('stacked arcade — no zombie equations after non-bottom-layer collapse', (
       return b.sort((a, b) => a - b);
     })();
 
-    // Clear the TOP layer (which always has a layer below — triggers the bug)
+    // Clear a MIDDLE layer (not top, not bottom) each cycle. Top alone doesn't
+    // create a gap (gravity has nothing to drop). Middle clears create the gap
+    // that v44c (zombie vEq) and v44d (reconnect) both protect against.
     for (let cycle = 0; cycle < 5; cycle++) {
       const sorted = data.layout.layers.slice().sort((a, b) => a.row - b.row);
-      let top = null;
-      for (const l of sorted) {
-        if (l.hEqIndices.length === 0) continue;
-        const eq = data.layout.equations[l.hEqIndices[0]];
-        if (eq.cells && eq.cells.length === 3) { top = l; break; }
+      // Pick the second layer from top — guaranteed to have layers above + below
+      // for stacks of size >= 3
+      if (sorted.length < 3) break;
+      let target = null;
+      for (let li = 1; li < sorted.length - 1; li++) {
+        if (sorted[li].hEqIndices.length === 0) continue;
+        const eq = data.layout.equations[sorted[li].hEqIndices[0]];
+        if (eq.cells && eq.cells.length === 3) { target = sorted[li]; break; }
       }
-      if (!top || data.layout.layers.length < 2) break;
-      const eqIdx = top.hEqIndices[0];
+      if (!target) break;
+      const eqIdx = target.hEqIndices[0];
       const eq = data.layout.equations[eqIdx];
       for (const k of eq.cells) {
         if (!data.givens[k] && state.placed[k] == null) {
@@ -812,7 +818,35 @@ test('stacked arcade — no zombie equations after non-bottom-layer collapse', (
         }
         seen.set(key, i);
       }
+      // (connectivity counters are aggregated across all trials/cycles below)
+      // v44d: every adjacent pair of layers SHOULD be connected by a vEq.
+      // Track gaps; assert most cycles preserve connectivity. Math edge cases
+      // (top == bottom for all shared cols, etc.) can prevent reconnect; those
+      // are rare and acceptable.
+      const sortedLayers = data.layout.layers.slice().sort((a, b) => a.row - b.row);
+      for (let li = 0; li < sortedLayers.length - 1; li++) {
+        const upper = sortedLayers[li];
+        const lower = sortedLayers[li + 1];
+        if (lower.row !== upper.row + 2) continue;
+        const upperCells = new Set(data.layout.equations[upper.hEqIndices[0]].cells);
+        const lowerCells = new Set(data.layout.equations[lower.hEqIndices[0]].cells);
+        let connected = false;
+        for (let ei = 0; ei < data.layout.equations.length; ei++) {
+          const e = data.layout.equations[ei];
+          if (e.orientation !== 'v' || e.cells.length !== 3) continue;
+          if (upperCells.has(e.cells[0]) && lowerCells.has(e.cells[2])) { connected = true; break; }
+        }
+        connectivityChecks++;
+        if (!connected) connectivityGaps++;
+      }
     }
+  }
+  // Allow up to 30% gaps (rare math edge cases). Catches the major regression
+  // (every collapse leaves a gap = before v44d) without being flaky on edge cases.
+  if (connectivityChecks > 0) {
+    const gapRate = connectivityGaps / connectivityChecks;
+    assert.ok(gapRate <= 0.3,
+      `connectivity gaps ${connectivityGaps}/${connectivityChecks} (${(gapRate * 100).toFixed(0)}%) exceeds 30% threshold`);
   }
   state.data = null;
 });

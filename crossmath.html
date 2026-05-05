@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#FBF6E8">
-<meta name="build" content="v44c-arcade-tetris-zombie-veq-fix">
+<meta name="build" content="v44d-arcade-tetris-reconnect">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='42' fill='%23FBF6E8'/></svg>">
 
 <!-- PWA manifest inline as data URI -->
@@ -2245,8 +2245,102 @@ function collapseOneLayer(layerIdx) {
   // Spawn a fresh layer at the top
   spawnNewTopLayer();
 
+  // Bridge the now-adjacent layers across the gap left by the cleared layer.
+  // Without this, the layer that just dropped to clearedRow is disconnected
+  // from the layer at clearedRow+2 — feels like floating islands. A fresh vEq
+  // restores the "connected tree" feel.
+  reconnectAcrossGap(clearedRow);
+
   recomputeBounds(p.layout);
   state.visual = buildVisualGrid(p.layout, p.puzzle);
+}
+
+/* After a middle-layer collapse + gravity, two layers that weren't adjacent
+   before are now adjacent (rows clearedRow and clearedRow+2). They have no
+   vEq between them. Build one. The connector cell is GIVEN (auto-filled, no
+   bank tile needed) — its only purpose is visual + structural connectivity. */
+function reconnectAcrossGap(clearedRow) {
+  var p = state.data;
+  if (clearedRow === 0) return; // top collapse — no layer dropped down to bridge
+
+  var topLayer = null;     // formerly at clearedRow-2, now at clearedRow
+  var bottomLayer = null;  // unchanged, at clearedRow+2
+  for (var li = 0; li < p.layout.layers.length; li++) {
+    var L = p.layout.layers[li];
+    if (L.row === clearedRow) topLayer = L;
+    else if (L.row === clearedRow + 2) bottomLayer = L;
+  }
+  if (!topLayer || !bottomLayer) return;
+  if (!topLayer.hEqIndices.length || !bottomLayer.hEqIndices.length) return;
+
+  var topHEq = p.layout.equations[topLayer.hEqIndices[0]];
+  var bottomHEq = p.layout.equations[bottomLayer.hEqIndices[0]];
+  if (!topHEq.cells.length || !bottomHEq.cells.length) return;
+
+  // Try every column where both layers have a cell. Prefer columns that
+  // don't already have a cell at (clearedRow-1) or (clearedRow+3) (anti-chain),
+  // and where top OP middle = bottom yields a valid middle in [1, maxNum].
+  var topCols = topHEq.cells.map(function (k) { return +k.split(',')[1]; });
+  var bottomCols = bottomHEq.cells.map(function (k) { return +k.split(',')[1]; });
+  var shared = topCols.filter(function (c) { return bottomCols.indexOf(c) !== -1; });
+  if (!shared.length) return;
+  var occAbove = {}, occBelow = {};
+  for (var ci = 0; ci < p.layout.cells.length; ci++) {
+    var pp = p.layout.cells[ci].split(',');
+    var r = +pp[0], c = +pp[1];
+    if (r === clearedRow - 1) occAbove[c] = true;
+    if (r === clearedRow + 3) occBelow[c] = true;
+  }
+  var cfg = DIFFICULTY[state.difficulty];
+
+  // Build candidates with valid math, sorted by anti-chain safety
+  var candidates = [];
+  for (var si = 0; si < shared.length; si++) {
+    var c = shared[si];
+    var tk = clearedRow + ',' + c;
+    var bk = (clearedRow + 2) + ',' + c;
+    var tv = p.puzzle.values[tk];
+    var bv = p.puzzle.values[bk];
+    if (tv == null || bv == null) continue;
+    var cOp = null, cMid = null;
+    if (bv > tv) {
+      var m1 = bv - tv;
+      if (m1 >= 1 && m1 <= cfg.maxNum) { cOp = '+'; cMid = m1; }
+    }
+    if (cOp == null && tv > bv) {
+      var m2 = tv - bv;
+      if (m2 >= 1 && m2 <= cfg.maxNum) { cOp = '−'; cMid = m2; }
+    }
+    if (cOp == null) continue;
+    candidates.push({ col: c, op: cOp, mid: cMid, safe: !occAbove[c] && !occBelow[c] });
+  }
+  if (!candidates.length) return; // no column allows valid math
+
+  candidates.sort(function (a, b) { return (b.safe ? 1 : 0) - (a.safe ? 1 : 0); });
+  var pick = candidates[0];
+  var connectorCol = pick.col;
+  var op = pick.op;
+  var midValue = pick.mid;
+  var topCellKey = clearedRow + ',' + connectorCol;
+  var bottomCellKey = (clearedRow + 2) + ',' + connectorCol;
+
+  // Add the connector cell + vEq. Mark connector as given (visual-only bridge,
+  // no bank tile needed, no extra deduction step for the player).
+  var connectorCellKey = (clearedRow + 1) + ',' + connectorCol;
+  p.layout.cells.push(connectorCellKey);
+  p.puzzle.values[connectorCellKey] = midValue;
+  p.givens[connectorCellKey] = true;
+  var newVEqIdx = p.layout.equations.length;
+  p.layout.equations.push({
+    cells: [topCellKey, connectorCellKey, bottomCellKey],
+    orientation: 'v'
+  });
+  p.puzzle.eqOps.push([op]);
+  bottomLayer.vEqIndicesUp.push(newVEqIdx);
+
+  // Slide-in animation tag for the new connector cell
+  state.arcadeIncomingCells = state.arcadeIncomingCells || {};
+  state.arcadeIncomingCells[connectorCellKey] = { fromX: '0px', fromY: '-30px' };
 }
 
 function shiftCellsAboveRow(thresholdRow, delta) {
