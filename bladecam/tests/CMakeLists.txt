@@ -75,6 +75,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_toolpaths.py)
   set_tests_properties(toolpaths PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Physical consistency of feed / machine-limit / cycle-time coupling
+  add_test(NAME physical_consistency
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_physical_consistency.py)
+  set_tests_properties(physical_consistency PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
