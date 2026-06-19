@@ -123,6 +123,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_workflow.py)
   set_tests_properties(workflow PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # C-ABI / boundary differential tests (each binding vs independent NumPy)
+  add_test(NAME abi_differential
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_abi_differential.py)
+  set_tests_properties(abi_differential PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
