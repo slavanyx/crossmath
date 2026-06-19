@@ -78,6 +78,13 @@ def main():
     # sane positive duration of the right order
     check(0.2*r["cycle_time_s"] < recon < 5*r["cycle_time_s"],
           "Heidenhain feeds give a sane cycle time", f"({recon:.2f}s)")
+    # a NON-unit input axis must be normalised in the LN tool vector (Heidenhain
+    # requires a unit orientation vector)
+    h3 = postproc.to_heidenhain(np.array([[0., 0, 0], [5., 0, 0]]),
+                                np.array([[0., 0, 3.], [0., 0, 2.]]), 3000.0)
+    v3 = vec([l for l in h3.splitlines() if l.startswith("LN ")][-1])
+    check(abs(np.linalg.norm(v3) - 1.0) < 1e-4, "non-unit input axis is normalised",
+          f"(|v|={np.linalg.norm(v3):.4f})")
 
     if FAILED:
         print(f"\nFAILED: {FAILED}")

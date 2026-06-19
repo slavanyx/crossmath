@@ -121,6 +121,18 @@ def main():
                                  plane_pt=np.array([0., 0, 2.]),
                                  plane_n=np.array([0., 0, 1.])).min()
     check(abs(cp + 2.0) < 1e-6, "fixture plane catches the assembly base", f"({cp:.2f})")
+    # tilted axis (nperp>0) on an EARLY segment dipping below the plane, with the
+    # final station clear -- exercises the per-segment plane term AND the
+    # segR*nperp tilt offset (a vertical-axis test masks both).
+    q0t = np.array([[50., 0, 2.], [50., 0, 40.]])
+    ax1 = np.array([0.6, 0, 0.8]); ax1 /= np.linalg.norm(ax1)
+    alt = np.array([ax1, [0., 0, 1.]])
+    far2 = np.array([[500., 0, 500.]])
+    ct = core.assembly_clearance(q0t, alt, segR, segLo, segHi, far2,
+                                 plane_pt=np.array([0., 0, 0.]),
+                                 plane_n=np.array([0., 0, 1.])).min()
+    check(ct < 0, "tilted per-segment assembly dips below the fixture plane",
+          f"({ct:.2f})")
 
     if FAILED:
         print(f"\nFAILED: {FAILED}")
