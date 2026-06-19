@@ -173,12 +173,22 @@ matplotlib):
   channel removed-volume / MRR planning figure (estimate, not a toolpath).
 - GUI "Process plan (stacked + roughing)".
 
+**Phase 11 (full process toolpaths)**
+- **Point-milling** (`pointmill`): ball-nose raster finishing for leading/
+  trailing edges and fillets; stepover from the scallop budget
+  (p = sqrt(8·R·h)), cutter location = contact + R·normal.
+- **Layered channel roughing** (`roughing.adaptive_rough`): real morph passes
+  across the channel at constant stepover engagement, per axial level; reports
+  passes, removed volume and cycle (replaces the earlier estimate).
+- GUI **Operations** menu: Flank finish / Double-flank / Channel roughing /
+  Edge finishing / Process plan, each with a 3D view.
+
 ## Roadmap
 
-- Real roughing/edge/fillet TOOLPATHS (current roughing is a time estimate;
-  leading/trailing-edge and hub-fillet finishing need point-milling ops).
 - 5-axis post-processor variants (head-head, head-table kinematics; RTCP).
-- Full machine-envelope / swept-volume verification.
+- Full machine-envelope / swept-volume verification (vs. the current
+  point-cloud collision model).
+- True trochoidal roughing engagement control (current is layered morph).
 - End-to-end validation on an industrial impeller STEP + reference-CAM compare.
 
 See the design notes for the governing formulas behind each phase.

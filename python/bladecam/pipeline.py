@@ -92,6 +92,29 @@ def roughing_time_estimate(p: Params, ap: float = 3.0, ae_frac: float = 0.4,
                 rough_time_s=minutes * 60.0, channel_gap_mm=gap)
 
 
+def edge_finish(p: Params, R_ball: float = 3.0, scallop_allow: float = 0.005):
+    """Point-mill (ball-nose) finishing of the blade leading-edge patch."""
+    from . import pointmill
+    a, b = _blade_rails(p)
+    patch = pointmill.leading_edge_patch(a, b)
+    return pointmill.point_mill(patch, R_ball, scallop_allow)
+
+
+def rough_channel(p: Params, ap: float = 3.0, stepover: float = None) -> dict:
+    """Layered roughing toolpath for the flow channel (real passes, not an
+    estimate)."""
+    from . import roughing
+    a, b = _blade_rails(p)
+    pitch = 2.0 * np.pi / p.n_blades
+    c, s = np.cos(pitch), np.sin(pitch)
+    Rz = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    a2, b2 = a @ Rz.T, b @ Rz.T
+    if stepover is None:
+        stepover = 0.4 * 2.0 * p.R
+    return roughing.adaptive_rough(a, b, a2, b2, ap, stepover,
+                                   p.process.effective_feed_mm_min())
+
+
 def double_flank_channel(p: Params) -> dict:
     """Double-flank channel milling: one cylinder finishes both walls of the
     flow channel (this blade's wall and the adjacent blade's facing wall) in a
