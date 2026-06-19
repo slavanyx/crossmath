@@ -49,6 +49,9 @@ _lib.bc_two_point.argtypes = [_DBL, _DBL, _DBL, _DBL, c_double, _DBL, _DBL]
 _lib.bc_deviation.argtypes = [_DBL, _DBL, c_double, _DBL, c_int, _DBL]
 _lib.bc_refine_minmax.argtypes = [_DBL, _DBL, _DBL, _DBL, c_double, c_int,
                                   _DBL, _DBL, _DBL]
+_lib.bc_ik_path.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL]
+_lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
+                         _DBL, _DBL]
 
 
 def _c(arr: np.ndarray) -> np.ndarray:
@@ -108,3 +111,30 @@ def refine_minmax(a_pt, ap, b_pt, bp, R: float, nv: int = 41):
                           c_double(R), c_int(nv),
                           _ptr(q0), _ptr(alpha), _ptr(emax))
     return q0, alpha, float(emax[0])
+
+
+def ik_path(Q: np.ndarray, O: np.ndarray, pivot) -> np.ndarray:
+    """Batch 5-axis inverse kinematics. Q, O are (npts, 3) contact points and
+    tool axes; returns machine axes (npts, 5) = [X, Y, Z, A, C] (A, C radians).
+    """
+    Q = _c(Q); O = _c(O); pivot = _c(pivot)
+    npts = Q.shape[0]
+    m = np.empty((npts, 5), dtype=np.float64)
+    _lib.bc_ik_path(_ptr(Q), _ptr(O), c_int(npts), _ptr(pivot), _ptr(m))
+    return m
+
+
+def topp(q: np.ndarray, vmax, amax, a0: float = 0.0, aN: float = 0.0):
+    """Time-optimal parameterization of a joint path q of shape (n, ndof).
+
+    vmax, amax are per-axis limits (length ndof). Returns (aprof[n], ttotal)
+    where aprof = sdot^2 along s and ttotal is the traversal time (seconds).
+    """
+    q = _c(q); vmax = _c(vmax); amax = _c(amax)
+    n, ndof = q.shape
+    # Fortran expects (ndof, n) column-major == (n, ndof) C-contiguous
+    aprof = np.empty(n, dtype=np.float64)
+    ttotal = np.empty(1, dtype=np.float64)
+    _lib.bc_topp(_ptr(q), c_int(ndof), c_int(n), _ptr(vmax), _ptr(amax),
+                 c_double(a0), c_double(aN), _ptr(aprof), _ptr(ttotal))
+    return aprof, float(ttotal[0])

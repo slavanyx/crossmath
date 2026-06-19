@@ -7,3 +7,5 @@ build/
 __pycache__/
 *.pyc
 bladecam_result.csv
+bladecam.nc
+*.png

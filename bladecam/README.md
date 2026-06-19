@@ -65,14 +65,33 @@ Set `BLADECAM_LIB=/path/to/libbladecam.so` to point at the library explicitly.
   deviation by ~89% vs two-point (789 → 85 µm).
 - **Tolerance-constrained global smoothing**: low-pass-filters the cutter-axis
   field within a deviation budget, reducing orientation jerk (rotary-axis
-  effort / cycle time) ~70% with no loss of worst-case accuracy.
+  effort / cycle time) with no loss of worst-case accuracy.
+
+**Phase 3 (kinematics / post / collision)**
+- 5-axis **inverse kinematics** for a table-table A–C machine (`kinematics.f90`),
+  verified by forward/inverse round-trip.
+- Neighbour-blade **collision / reachability** check (tool-axis vs. rotated
+  adjacent blade) with min-clearance reporting.
+- Minimal **G-code post-processor** (`postproc.py`).
+
+**Phase 4 (time-optimal feed)**
+- **TOPP** time-optimal path parameterization (`topp.f90`): forward/backward
+  integration under per-axis velocity/acceleration limits; verified against the
+  analytic trapezoidal-profile time.
+- **Process feed caps** (`process.py`): tool-deflection and feed-ceiling limits
+  folded into TOPP as a tool-tip feed constraint; **cycle-time** report.
+- Demonstrates smoothing → shorter cycle time at equal accuracy (3.90 → 3.38 s).
+
+**GUI** — `viewer.py`: real-time PySide6 + PyVista app. Live 3D blade flank
+coloured by deviation, striction curve, 5-axis cutter axes; sliders for
+geometry / tool / strategy / machine / process; live peak-deviation, jerk,
+cycle-time and collision readouts; G-code export.
 
 ## Roadmap
 
-- **Phase 3** 5-axis inverse kinematics / post-processor; collision &
-  reachability in the blade channel.
-- **Phase 4** Time-optimal feed (TOPP-RA) + chatter/deflection caps; cycle-time
-  report and rotary-axis smoothing within the tolerance band.
-- **Phase 5** CAD import (STEP/IGES/STL), G-code/APT export, packaging.
+- **Phase 5** Global envelope (B-spline control-point) optimization; CAD import
+  (STEP/IGES/STL); APT/optimized G-code export; packaging & installers.
+- Chatter stability-lobe model from a measured tool-tip FRF.
+- Conical/barrel tool support for strongly warped blades.
 
 See the design notes for the governing formulas behind each phase.
