@@ -224,10 +224,14 @@ contains
     integer, intent(inout) :: nfail
     integer, parameter :: nl = 4, np = 50, ntot = nl*np
     real(dp) :: rpm(ntot), a1(ntot), a2(ntot)
-    call stability_lobes(800.0_dp, 0.03_dp, 2.0e7_dp, 800.0_dp, 4, nl, np, rpm, a1)
-    call stability_lobes(800.0_dp, 0.06_dp, 2.0e7_dp, 800.0_dp, 4, nl, np, rpm, a2)
+    call stability_lobes(800.0_dp, 0.03_dp, 2.0e4_dp, 800.0_dp, 4, nl, np, rpm, a1)
+    call stability_lobes(800.0_dp, 0.06_dp, 2.0e4_dp, 800.0_dp, 4, nl, np, rpm, a2)
     call check(all(a1 > 0.0_dp) .and. all(rpm > 0.0_dp), "lobes positive/finite", nfail)
     call check(minval(a2) > minval(a1), "more damping -> higher stable depth", nfail)
+    ! REGRESSION: epsilon must be reduced mod 2*pi so the high-speed (k=0) lobe
+    ! is present. Without the fix, max rpm stays ~ 60*wc/(N*2*pi) ~ 1.6e4; with
+    ! it the k=0 lobe asymptotes to much higher spindle speeds.
+    call check(maxval(rpm) > 3.0e4_dp, "high-speed (k=0) lobe present", nfail)
   end subroutine test_chatter_lobes
 
   function axis_roughness(al, nu) result(r)
