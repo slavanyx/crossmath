@@ -9,7 +9,7 @@ module bladecam_capi
   use vec3_mod,   only: dp
   use ruled_mod,  only: distribution
   use flank_mod,  only: two_point, deviation, deviation_cone
-  use flank_opt_mod, only: refine_minmax, optimize_global
+  use flank_opt_mod, only: refine_minmax, optimize_global, optimize_double_flank
   use kinematics_mod, only: inverse_kin_ac
   use topp_mod, only: topp_ra
   use chatter_mod, only: stability_lobes, stability_lobes_frf
@@ -72,6 +72,18 @@ contains
     real(c_double), intent(out) :: q0(3,nu), alpha(3,nu), dev(nu)
     call optimize_global(a, b, ap, bp, nu, R, nv, mu, gamma, nsweeps, q0, alpha, dev)
   end subroutine bc_optimize_global
+
+  !> Double-flank channel optimization: one cylinder tangent to both walls
+  !> (aL,bL) and (aR,bR), each (3,nu). Outputs axes + per-wall deviations.
+  subroutine bc_optimize_double_flank(aL, bL, aR, bR, nu, R, nv, mu, gamma, &
+       nsweeps, q0, alpha, devL, devR) bind(C, name="bc_optimize_double_flank")
+    integer(c_int), value :: nu, nv, nsweeps
+    real(c_double), intent(in)  :: aL(3,nu), bL(3,nu), aR(3,nu), bR(3,nu)
+    real(c_double), value       :: R, mu, gamma
+    real(c_double), intent(out) :: q0(3,nu), alpha(3,nu), devL(nu), devR(nu)
+    call optimize_double_flank(aL, bL, aR, bR, nu, R, nv, mu, gamma, nsweeps, &
+                               q0, alpha, devL, devR)
+  end subroutine bc_optimize_double_flank
 
   !> Chatter stability-lobe diagram: returns rpm and limiting depth a_lim
   !> arrays of length nlobes*nptsper.

@@ -39,6 +39,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_frf_chatter.py)
   set_tests_properties(frf_chatter PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Double-flank channel milling (exact planar channel + curved channel)
+  add_test(NAME double_flank
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_double_flank.py)
+  set_tests_properties(double_flank PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
