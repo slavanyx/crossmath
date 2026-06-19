@@ -263,11 +263,12 @@ contains
   !> points that project beyond the flute and would make the optimiser over-tilt.
   function swept_penalty(q0, ahat) result(pen)
     real(dp), intent(in) :: q0(3), ahat(3)
-    real(dp) :: pen, ptn(3), wn(3), dn, vv, lam, Lflute
+    real(dp) :: pen, ptn(3), wn(3), dn, vv, lam, Lflute, rho, tg
     integer  :: j, m, jlo, jhi, nfull
     integer, parameter :: npen = 9
     pen = 0.0_dp
     nfull = size(ctx_aa, 2)
+    tg = tan(ctx_gamma)        ! local tool radius rho=R+lam*tan(gamma); 0 => cyl
     Lflute = norm3(ctx_bb(:, ctx_idx) - ctx_aa(:, ctx_idx))
     jlo = max(1, ctx_idx - ctx_window)
     jhi = min(nfull, ctx_idx + ctx_window)
@@ -279,8 +280,9 @@ contains
         wn = ptn - q0
         lam = dot3(wn, ahat)
         lam = max(0.0_dp, min(Lflute, lam))      ! finite engaged flute
+        rho = ctx_R + lam * tg                   ! cone radius at this station
         dn = norm3(wn - lam * ahat)
-        if (dn < ctx_R) pen = pen + (ctx_R - dn) / ctx_R
+        if (dn < rho) pen = pen + (rho - dn) / ctx_R
       end do
     end do
   end function swept_penalty
