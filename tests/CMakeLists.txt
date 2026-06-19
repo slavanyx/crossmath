@@ -45,6 +45,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_double_flank.py)
   set_tests_properties(double_flank PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Multi-face blisk extraction (one rail pair per blade)
+  add_test(NAME blisk_extraction
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_blisk_extraction.py)
+  set_tests_properties(blisk_extraction PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class

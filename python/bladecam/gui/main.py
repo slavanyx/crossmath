@@ -34,6 +34,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.last = None
         self._editors = {}
         self._overlay = None      # persistent imported-CAD overlay mesh
+        self._blisk = None        # list of (a,b) rails for a loaded blisk
+        self._blisk_i = 0
 
         self.setWindowTitle("BladeCAM — 5-axis flank milling")
         self.setDockNestingEnabled(True)
@@ -56,6 +58,8 @@ class MainWindow(QtWidgets.QMainWindow):
         filem = mb.addMenu("&File")
         self._act(filem, "Import rails CSV…", self.import_rails)
         self._act(filem, "Load blade from STEP/IGES…", self.load_blade_cad)
+        self._act(filem, "Load blisk (all blades)…", self.load_blisk)
+        self._act(filem, "Next blisk blade", self.next_blisk_blade)
         self._act(filem, "Overlay CAD (STL/STEP/IGES)…", self.import_cad)
         self._act(filem, "Load tool-tip FRF (CSV)…", self.load_frf)
         self._act(filem, "Use parametric blade", self.use_parametric)
@@ -322,11 +326,38 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status.showMessage(f"loaded blade from {fn} ({len(a)} stations)")
         self.recompute(compare=True)
 
+    def load_blisk(self):
+        """Extract every blade of a blisk STEP/IGES; show the first."""
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Load blisk", "", "B-rep (*.step *.stp *.iges *.igs)")
+        if not fn:
+            return
+        try:
+            self._blisk = cadio.rails_list_from_cad(
+                fn, nu=int(self.model.values["nu"]))
+        except Exception as e:
+            self.status.showMessage(f"blisk load failed: {e}")
+            return
+        self._blisk_i = 0
+        self.model.rails = self._blisk[0]
+        self.status.showMessage(f"blisk: {len(self._blisk)} blades; showing blade 1")
+        self.recompute(compare=True)
+
+    def next_blisk_blade(self):
+        if not self._blisk:
+            return
+        self._blisk_i = (self._blisk_i + 1) % len(self._blisk)
+        self.model.rails = self._blisk[self._blisk_i]
+        self.status.showMessage(
+            f"blisk: blade {self._blisk_i + 1}/{len(self._blisk)}")
+        self.recompute(compare=True)
+
     def use_parametric(self):
         """Drop any loaded CAD blade/overlay/FRF and return to defaults."""
         self.model.rails = None
         self.model.frf = None
         self._overlay = None
+        self._blisk = None
         self.recompute(compare=True)
 
     def show_double_flank(self):
