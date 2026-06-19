@@ -123,6 +123,18 @@ def test_topp_handles_cusp():
 
 
 def test_topp_small_n():
+    """TOPP must not read past the array on short paths: the 3-point curvature
+    stencil would access q(:,3) for n<3. n=1 and n=2 must return finite profiles
+    (caught by the Debug -fcheck=all build only if a test exercises them)."""
+    from bladecam import core
+    for n in (1, 2, 3):
+        q = np.linspace(0, 5, n).reshape(n, 1)
+        aprof, T = core.topp(q, np.array([1.0]), np.array([1.0]))
+        check(aprof.shape[0] == n and np.all(np.isfinite(aprof)) and np.isfinite(T),
+              f"TOPP n={n} returns a finite profile (no OOB)")
+
+
+def test_topp_small_n():
     """TOPP must not read out of bounds for short paths. The 3-point curvature
     stencil reads q(:,3)/q(:,n-2); for n<3 that is out of bounds (UB; the Debug
     -fcheck=all build aborts). n=1/2 are degenerate but must return finite."""
