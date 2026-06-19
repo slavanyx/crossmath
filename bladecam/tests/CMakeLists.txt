@@ -28,6 +28,12 @@ if(PYTHON3)
   set_tests_properties(cad_step PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Fuzz the CAD importer with pathological geometry (graceful degradation)
+  add_test(NAME cad_fuzz
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_cad_fuzz.py)
+  set_tests_properties(cad_fuzz PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Automatic STEP rail extraction (skips gracefully without OpenCASCADE)
   add_test(NAME rail_extraction
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_rail_extraction.py)

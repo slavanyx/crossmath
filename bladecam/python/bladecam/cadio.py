@@ -267,11 +267,14 @@ def rails_from_shape(shape, nu: int = 60, face_index=None, ndetect: int = 11):
 
 
 def _sample_edge(edge, n):
-    """Uniform arc-length sampling of a B-rep edge into (n,3) points."""
+    """Uniform arc-length sampling of a B-rep edge into (n,3) points.
+    Raises on a degenerate/uncomputable edge so callers can fall back."""
     from OCP.BRepAdaptor import BRepAdaptor_Curve
     from OCP.GCPnts import GCPnts_QuasiUniformAbscissa
     ac = BRepAdaptor_Curve(edge)
     gc = GCPnts_QuasiUniformAbscissa(ac, n)
+    if not gc.IsDone() or gc.NbPoints() < n:
+        raise ValueError("edge abscissa not computable")
     out = np.empty((n, 3))
     for i in range(1, n + 1):
         p = ac.Value(gc.Parameter(i))
@@ -288,17 +291,20 @@ def _rails_from_face_edges(face, nu):
     fallback when the outer wire is not 4-sided.
     """
     from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
-    we = BRepTools_WireExplorer(BRepTools.OuterWire_s(face))
-    edges = []
-    while we.More():
-        edges.append(we.Current()); we.Next()
-    if len(edges) != 4:
-        return None
-    st = [_straightness(_sample_edge(e, 21)) for e in edges]
-    # opposite edges pair up; rails are the more-curved pair (rulings are straight)
-    rails = (0, 2) if (st[0] + st[2]) >= (st[1] + st[3]) else (1, 3)
-    a = _sample_edge(edges[rails[0]], nu)
-    b = _sample_edge(edges[rails[1]], nu)
+    try:
+        we = BRepTools_WireExplorer(BRepTools.OuterWire_s(face))
+        edges = []
+        while we.More():
+            edges.append(we.Current()); we.Next()
+        if len(edges) != 4:
+            return None
+        st = [_straightness(_sample_edge(e, 21)) for e in edges]
+        # opposite edges pair up; rails = the more-curved pair (rulings straight)
+        rails = (0, 2) if (st[0] + st[2]) >= (st[1] + st[3]) else (1, 3)
+        a = _sample_edge(edges[rails[0]], nu)
+        b = _sample_edge(edges[rails[1]], nu)
+    except Exception:
+        return None    # degenerate/seamed/uncomputable face -> UV-box fallback
     if np.linalg.norm(a[0] - b[0]) > np.linalg.norm(a[0] - b[-1]):
         b = b[::-1]
     return np.ascontiguousarray(a), np.ascontiguousarray(b)
