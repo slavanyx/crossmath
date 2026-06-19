@@ -216,7 +216,15 @@ def compute(p: Params) -> dict:
     clr = core.swept_clearance(q0, alpha, obstacles, p.R, pr.flute_len,
                                pr.holder_dia * 0.5, pr.holder_gap, pr.holder_len,
                                nscan=max(4, 2 * p.collision_substeps))
-    min_clear = float(clr.min())
+    # holder vs the blade BEING machined: the flute is tangent to this blade by
+    # design (a full-tool check there is a false positive), but the holder must
+    # still clear it -- it may not at a steep lead/lean tilt, or when the flute
+    # is shorter than the ruling so the holder overlaps the uncovered blade top.
+    holder_base = pr.flute_len + pr.holder_gap
+    holder_self = core.holder_clearance(q0, alpha, flat, pr.holder_dia * 0.5,
+                                        holder_base, pr.holder_len)
+    holder_min = float(holder_self.min())
+    min_clear = float(min(clr.min(), holder_min))
     collision_free = bool(min_clear > 0.0)
     gouge_max = float(max(0.0, -devfield.min()))   # per-station depth past the design surface
     # swept-envelope overcut: cross-station interference the per-station model
@@ -248,6 +256,7 @@ def compute(p: Params) -> dict:
         delta=delta, q0=q0, alpha=alpha, dev=dev,
         machine_path=m, aprof=aprof, cycle_time_s=cycle_s,
         min_clearance=min_clear, collision_free=collision_free,
+        holder_clearance=holder_min,
         gouge_max=gouge_max, swept_overcut=swept_overcut, clearance=clr,
         swept_field=swept_field,
         orient_jerk=optimize.orientation_jerk(alpha),

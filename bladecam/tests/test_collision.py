@@ -71,6 +71,25 @@ def main():
     stat_last = core.tool_clearance(q0[-1:], al[-1:], obst, *args)[0]
     check(abs(cont[-1] - stat_last) < 1e-6, "continuous last entry = static clearance")
 
+    # HOLDER-only clearance vs the blade being machined (the flute is tangent to
+    # that blade by design, so a full-tool check there is a false positive). The
+    # fat holder (radius Rh=8 > flute R=5) hits a tall wall sitting at the flute
+    # radius, but clears a wall set back beyond Rh.
+    R, Lf, Rh, gap, Lh = 5.0, 20.0, 8.0, 2.0, 40.0
+    base = Lf + gap
+    qv = np.array([[0., 0, 0]]); up = np.array([[0., 0, 1.]])
+    z = np.linspace(0, 60, 30)
+    wall_at = lambda x: np.column_stack([np.full_like(z, x), np.zeros_like(z), z])
+    h_near = core.holder_clearance(qv, up, wall_at(R), Rh, base, Lh)[0]   # within Rh
+    h_far = core.holder_clearance(qv, up, wall_at(Rh + 3.0), Rh, base, Lh)[0]  # beyond Rh
+    check(h_near < 0, "holder hits a wall inside its radius", f"({h_near:.2f})")
+    check(h_far > 0, "holder clears a wall set back beyond its radius", f"({h_far:.2f})")
+    # a steep lean that swings the holder over a tangent wall is detected
+    th = np.radians(35.0); ax = np.array([[np.sin(th), 0, np.cos(th)]])
+    overhang = np.array([[x, 0., 38.] for x in np.linspace(0, 30, 30)])  # wall top band
+    check(core.holder_clearance(qv, ax, overhang, Rh, base, Lh).min() < 0,
+          "steep lean swings the holder into an overhanging wall band")
+
     # pipeline: a very tight blade count collides; a generous one is clear
     tight = compute(Params(strategy="global", n_blades=38))
     loose = compute(Params(strategy="global", n_blades=6))
@@ -78,6 +97,7 @@ def main():
           "tighter blade spacing reduces clearance",
           f"(tight {tight['min_clearance']:.2f} vs loose {loose['min_clearance']:.2f} mm)")
     check("gouge_max" in tight and tight["gouge_max"] >= 0, "gouge metric reported")
+    check("holder_clearance" in tight, "pipeline reports holder clearance")
 
     if FAILED:
         print(f"\nFAILED: {FAILED}")

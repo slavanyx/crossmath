@@ -11,7 +11,7 @@ module collision_mod
   use vec3_mod
   implicit none
   private
-  public :: tool_clearance, capped_cyl_sdf, swept_clearance
+  public :: tool_clearance, capped_cyl_sdf, swept_clearance, holder_clearance
 
 contains
 
@@ -61,6 +61,31 @@ contains
       end do
     end do
   end subroutine tool_clearance
+
+  !> Per-station clearance of the HOLDER ALONE (the shank/holder capped cylinder
+  !> at axial [Lf+gap, Lf+gap+Lh], radius Rh) to an obstacle cloud. This is the
+  !> check that matters against the blade BEING machined: the flute is tangent to
+  !> that blade by design (so a full-tool check there is a false positive), but
+  !> the holder must still clear it -- which it may not at a steep lead/lean tilt
+  !> or when the flute is shorter than the ruling. clr(nu); negative = collision.
+  subroutine holder_clearance(q0, alpha, Rh, base, Lh, nu, pts, npts, clr)
+    integer,  intent(in)  :: nu, npts
+    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Rh, base, Lh, pts(3,npts)
+    real(dp), intent(out) :: clr(nu)
+    integer  :: i, j
+    real(dp) :: ahat(3), w(3), lam, perp, sdf
+    do i = 1, nu
+      ahat = unit3(alpha(:,i))
+      clr(i) = huge(1.0_dp)
+      do j = 1, npts
+        w = pts(:,j) - q0(:,i)
+        lam = dot3(w, ahat)
+        perp = norm3(w - lam*ahat)
+        sdf = capped_cyl_sdf(lam - base, perp, Lh, Rh)
+        if (sdf < clr(i)) clr(i) = sdf
+      end do
+    end do
+  end subroutine holder_clearance
 
   !> Continuous swept-volume clearance: as the tool sweeps from station i to i+1
   !> (q0 lerped, axis normalised-lerped) the minimum clearance to the obstacle
