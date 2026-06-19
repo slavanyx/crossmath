@@ -98,6 +98,29 @@ def main():
           f"(tight {tight['min_clearance']:.2f} vs loose {loose['min_clearance']:.2f} mm)")
     check("gouge_max" in tight and tight["gouge_max"] >= 0, "gouge metric reported")
     check("holder_clearance" in tight, "pipeline reports holder clearance")
+    check("assembly_clearance" in tight, "pipeline reports assembly clearance")
+
+    # --- full tool-ASSEMBLY collision (flute+holder+spindle) + fixture plane ---
+    q0a = np.array([[0., 0, 0], [20., 0, 0]]); ala = np.array([[0., 0, 1.], [0., 0, 1.]])
+    segR = np.array([5., 10.]); segLo = np.array([0., 22.]); segHi = np.array([20., 62.])
+    # a 2-segment assembly must reproduce the flute+holder swept clearance exactly
+    obst = np.array([[10., 0, 10.]])
+    a2 = core.assembly_clearance(q0a, ala, segR, segLo, segHi, obst).min()
+    s2 = core.swept_clearance(q0a, ala, obst, 5., 20., 10., 2., 40.).min()
+    check(abs(a2 - s2) < 1e-6, "assembly(2-seg) == flute+holder swept",
+          f"({a2:.3f} vs {s2:.3f})")
+    # a spindle segment catches a high obstacle the flute/holder miss
+    s3R = np.array([5., 10., 15.]); s3Lo = np.array([0., 22., 64.]); s3Hi = np.array([20., 62., 104.])
+    hi = np.array([[10., 0, 80.]])
+    check(core.assembly_clearance(q0a, ala, segR, segLo, segHi, hi).min() > 0
+          and core.assembly_clearance(q0a, ala, s3R, s3Lo, s3Hi, hi).min() < 0,
+          "spindle segment catches a high obstacle flute+holder miss")
+    # fixture half-space: the flute base (z=0) dips below a plane at z=2
+    far = np.array([[100., 0, 100.]])
+    cp = core.assembly_clearance(q0a, ala, segR, segLo, segHi, far,
+                                 plane_pt=np.array([0., 0, 2.]),
+                                 plane_n=np.array([0., 0, 1.])).min()
+    check(abs(cp + 2.0) < 1e-6, "fixture plane catches the assembly base", f"({cp:.2f})")
 
     if FAILED:
         print(f"\nFAILED: {FAILED}")

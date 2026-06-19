@@ -14,7 +14,8 @@ module bladecam_capi
   use kinematics_mod, only: inverse_kin_ac
   use topp_mod, only: topp_ra
   use chatter_mod, only: stability_lobes, stability_lobes_frf
-  use collision_mod, only: tool_clearance, swept_clearance, holder_clearance
+  use collision_mod, only: tool_clearance, swept_clearance, holder_clearance, &
+                           assembly_clearance
   use dexel_mod, only: dexel_carve
   implicit none
 
@@ -195,6 +196,18 @@ contains
     real(c_double), intent(out) :: clr(nu)
     call holder_clearance(q0, alpha, Rh, base, Lh, nu, pts, npts, clr)
   end subroutine bc_holder_clearance
+
+  !> Full tool-assembly (flute+holder+spindle) swept clearance + fixture plane.
+  subroutine bc_assembly_clearance(q0, alpha, nseg, segR, segLo, segHi, nu, &
+       pts, npts, p0, n, use_plane, nscan, clr) &
+       bind(C, name="bc_assembly_clearance")
+    integer(c_int), value :: nseg, nu, npts, use_plane, nscan
+    real(c_double), intent(in)  :: q0(3,nu), alpha(3,nu), pts(3,npts)
+    real(c_double), intent(in)  :: segR(nseg), segLo(nseg), segHi(nseg), p0(3), n(3)
+    real(c_double), intent(out) :: clr(nu)
+    call assembly_clearance(q0, alpha, nseg, segR, segLo, segHi, nu, &
+                            pts, npts, p0, n, use_plane, nscan, clr)
+  end subroutine bc_assembly_clearance
 
   !> Dexel material-removal carve: removed length and first-cut t per ray.
   subroutine bc_dexel_carve(q0, alpha, R, Lf, nu, orig, dir, seg0, nray, &
