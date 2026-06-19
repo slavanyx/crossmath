@@ -157,11 +157,18 @@ matplotlib):
   `rails_list_from_cad`): one rail pair per blade across all flank faces. GUI
   "Load blisk (all blades)" + "Next blisk blade".
 
+**Phase 10 (Tier 1: trust)**
+- **Real tool+holder collision/gouge** (`collision.f90`): signed-distance model
+  of flute + holder vs the adjacent blades; reports clearance and a separate
+  gouge depth (replaces the old axis-line proxy).
+- **Trimmed-face rail extraction** (`cadio._rails_from_face_edges`): follows the
+  face's actual boundary edges (rails = the curved pair). Recovers a curved
+  trimmed shroud to ~0.1 mm where the UV-box method erred by ~7 mm.
+
 ## Roadmap
 
-- Edge-based rail extraction for trimmed faces (current path assumes full-UV
-  ruled faces).
-- 5-axis post-processor variants (head-head, head-table kinematics).
-- Tool-holder collision and full machine-envelope simulation.
+- Roughing (channel bulk removal) and leading/trailing-edge + hub-fillet passes.
+- 5-axis post-processor variants (head-head, head-table kinematics; RTCP).
+- Full machine-envelope / swept-volume verification.
 
 See the design notes for the governing formulas behind each phase.

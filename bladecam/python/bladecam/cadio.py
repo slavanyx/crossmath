@@ -266,18 +266,60 @@ def rails_from_shape(shape, nu: int = 60, face_index=None, ndetect: int = 11):
     return _rails_from_face(face, nu, ndetect)
 
 
+def _sample_edge(edge, n):
+    """Uniform arc-length sampling of a B-rep edge into (n,3) points."""
+    from OCP.BRepAdaptor import BRepAdaptor_Curve
+    from OCP.GCPnts import GCPnts_QuasiUniformAbscissa
+    ac = BRepAdaptor_Curve(edge)
+    gc = GCPnts_QuasiUniformAbscissa(ac, n)
+    out = np.empty((n, 3))
+    for i in range(1, n + 1):
+        p = ac.Value(gc.Parameter(i))
+        out[i - 1] = (p.X(), p.Y(), p.Z())
+    return out
+
+
+def _rails_from_face_edges(face, nu):
+    """Edge-based rail extraction: follow the face's ACTUAL boundary curves.
+
+    Works for a 4-sided flank face (two rails + leading/trailing ends), and is
+    robust to trimming because it samples the real edges, not the UV box. The
+    two rails are the curved pair (rulings are straight); returns None to signal
+    fallback when the outer wire is not 4-sided.
+    """
+    from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
+    we = BRepTools_WireExplorer(BRepTools.OuterWire_s(face))
+    edges = []
+    while we.More():
+        edges.append(we.Current()); we.Next()
+    if len(edges) != 4:
+        return None
+    st = [_straightness(_sample_edge(e, 21)) for e in edges]
+    # opposite edges pair up; rails are the more-curved pair (rulings are straight)
+    rails = (0, 2) if (st[0] + st[2]) >= (st[1] + st[3]) else (1, 3)
+    a = _sample_edge(edges[rails[0]], nu)
+    b = _sample_edge(edges[rails[1]], nu)
+    if np.linalg.norm(a[0] - b[0]) > np.linalg.norm(a[0] - b[-1]):
+        b = b[::-1]
+    return np.ascontiguousarray(a), np.ascontiguousarray(b)
+
+
 def _rails_from_face(face, nu: int = 60, ndetect: int = 11):
     """Extract hub/shroud rails of a single B-rep face.
 
-    The ruling (hub->shroud) direction is auto-detected as the parameter whose
-    isocurves are straightest; the two rails are the face's boundary curves
-    across it. Assumes an untrimmed (rectangular-UV) ruled-ish flank face (the
-    typical blade-loft output). For (near-)planar / ambiguous faces the choice
-    is geometrically benign and the tie-break is deterministic. Trimmed faces
-    whose valid region is not the full UV box need edge-based extraction.
+    Primary path: edge-based extraction following the face's actual boundary
+    (robust to trimmed leading/trailing edges). Fallback for non-4-sided faces:
+    auto-detect the ruling direction (straightest isocurves) and read the rails
+    off the UV box -- valid for untrimmed rectangular-UV ruled faces. For
+    (near-)planar/ambiguous faces the choice is geometrically benign and the
+    tie-break is deterministic.
     """
     from OCP.BRep import BRep_Tool
     from OCP.BRepTools import BRepTools
+
+    edge_rails = _rails_from_face_edges(face, nu)
+    if edge_rails is not None:
+        return edge_rails
 
     s = BRep_Tool.Surface_s(face)
     umin, umax, vmin, vmax = BRepTools.UVBounds_s(face)
