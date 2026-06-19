@@ -21,7 +21,7 @@ def _ruling_dev(a_i, b_i, q0, alpha, R, nv):
 
 
 def optimize_blade(a, b, ap, bp, R, nv=41, smooth_window=5, tol_mm=None,
-                   mu=30.0, gamma=0.0, nsweeps=4):
+                   mu=1.0, gamma=0.0, nsweeps=4):
     """Return a dict of per-ruling results for two-point, min-max,
     tolerance-constrained smoothed, and globally-optimized strategies, with
     peak deviation arrays.

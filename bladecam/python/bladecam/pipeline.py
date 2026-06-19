@@ -29,7 +29,7 @@ class Params:
     nv: int = 41
     strategy: str = "minmax"    # two_point | minmax | smoothed | global
     smooth_window: int = 5
-    mu: float = 30.0            # global-optimizer smoothness weight
+    mu: float = 1.0             # global-optimizer smoothness weight (dimensionless)
     gamma: float = 0.0          # tool taper half-angle (rad); 0 = cylinder
     nsweeps: int = 4
     rails: tuple = None         # optional (a, b) override for external blades
@@ -45,6 +45,18 @@ def _blade_rails(p: Params):
                 np.ascontiguousarray(p.rails[1]))
     return blade.make_blade(p.nu, p.r_hub, p.r_shroud, p.z_span,
                             p.z_offset, p.wrap, p.twist)
+
+
+def _rotz(ang: float) -> np.ndarray:
+    """Rotation about the impeller (Z) axis."""
+    c, s = np.cos(ang), np.sin(ang)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
+def _neighbour_walls(a, b, n_blades, k=1):
+    """The k-th adjacent blade's wall, rotated by the blade pitch about Z."""
+    Rz = _rotz(k * 2.0 * np.pi / n_blades)
+    return a @ Rz.T, b @ Rz.T
 
 
 def stacked_flank_passes(p: Params) -> dict:
@@ -105,10 +117,7 @@ def rough_channel(p: Params, ap: float = 3.0, stepover: float = None) -> dict:
     estimate)."""
     from . import roughing
     a, b = _blade_rails(p)
-    pitch = 2.0 * np.pi / p.n_blades
-    c, s = np.cos(pitch), np.sin(pitch)
-    Rz = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
-    a2, b2 = a @ Rz.T, b @ Rz.T
+    a2, b2 = _neighbour_walls(a, b, p.n_blades)
     if stepover is None:
         stepover = 0.4 * 2.0 * p.R
     return roughing.adaptive_rough(a, b, a2, b2, ap, stepover,
@@ -119,15 +128,8 @@ def double_flank_channel(p: Params) -> dict:
     """Double-flank channel milling: one cylinder finishes both walls of the
     flow channel (this blade's wall and the adjacent blade's facing wall) in a
     single pass. Returns axes, per-wall deviation, and both wall surfaces."""
-    if p.rails is not None:
-        a, b = np.ascontiguousarray(p.rails[0]), np.ascontiguousarray(p.rails[1])
-    else:
-        a, b = blade.make_blade(p.nu, p.r_hub, p.r_shroud, p.z_span,
-                                p.z_offset, p.wrap, p.twist)
-    pitch = 2.0 * np.pi / p.n_blades
-    c, s = np.cos(pitch), np.sin(pitch)
-    Rz = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
-    aR, bR = a @ Rz.T, b @ Rz.T                      # adjacent blade's wall
+    a, b = _blade_rails(p)
+    aR, bR = _neighbour_walls(a, b, p.n_blades)      # adjacent blade's wall
     q0, alpha, devL, devR = core.optimize_double_flank(
         a, b, aR, bR, p.R, nv=p.nv, mu=p.mu, gamma=p.gamma, nsweeps=p.nsweeps)
     nvg = 30
@@ -137,13 +139,11 @@ def double_flank_channel(p: Params) -> dict:
 
 
 def compute(p: Params) -> dict:
-    if p.rails is not None:
-        a, b = np.ascontiguousarray(p.rails[0]), np.ascontiguousarray(p.rails[1])
-    else:
-        a, b = blade.make_blade(p.nu, p.r_hub, p.r_shroud, p.z_span,
-                                p.z_offset, p.wrap, p.twist)
+    a, b = _blade_rails(p)
     ap, bp = blade.rail_tangents(a, b)
     nu = a.shape[0]
+    pr = p.process
+    feed_cap = pr.effective_feed_mm_min()
 
     delta, vstar, strict = core.distribution(a, b)
 
@@ -171,14 +171,10 @@ def compute(p: Params) -> dict:
     m[:, 3] = np.unwrap(m[:, 3])                      # unwrap A, C for TOPP
     m[:, 4] = np.unwrap(m[:, 4])
 
-    # --- collision (tool + holder vs neighbour blades) and gouge ---
-    pitch = 2.0 * np.pi / p.n_blades
-    def _rotz(ang):
-        c, s = np.cos(ang), np.sin(ang)
-        return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    # --- collision (tool + holder vs both neighbour blades) and gouge ---
     flat = surf.reshape(-1, 3)
+    pitch = 2.0 * np.pi / p.n_blades
     obstacles = np.vstack([flat @ _rotz(pitch).T, flat @ _rotz(-pitch).T])
-    pr = p.process
     clr = core.tool_clearance(q0, alpha, obstacles, p.R, pr.flute_len,
                               pr.holder_dia * 0.5, pr.holder_gap, pr.holder_len)
     min_clear = float(clr.min())
@@ -188,7 +184,7 @@ def compute(p: Params) -> dict:
     # --- Phase 4: time-optimal feed ---
     # contact-path arc length as an extra DOF carrying the process feed cap
     seglen = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(contact, axis=0), axis=1))]
-    feed_cap_mms = p.process.effective_feed_mm_min() / 60.0
+    feed_cap_mms = feed_cap / 60.0
     q = np.column_stack([m, seglen])                 # (nu, 6)
     vmax = p.machine.vmax() + [feed_cap_mms]
     amax = p.machine.amax() + [1.0e4]
@@ -202,6 +198,6 @@ def compute(p: Params) -> dict:
         gouge_max=gouge_max, clearance=clr,
         orient_jerk=optimize.orientation_jerk(alpha),
         contact=contact, seglen=seglen,
-        feed_cap_mm_min=p.process.effective_feed_mm_min(),
+        feed_cap_mm_min=feed_cap,
         path_len_mm=float(seglen[-1]),
     )
