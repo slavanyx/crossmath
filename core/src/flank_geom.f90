@@ -87,12 +87,13 @@ contains
   !> cross-station interference (the tool at one station gouging the surface that
   !> "belongs" to another) which the per-station deviation cannot see. g < 0 is a
   !> real overcut/gouge of the machined part.
-  subroutine swept_deviation(q0, alpha, Lflute, R, nu, pts, npts, g)
+  subroutine swept_deviation(q0, alpha, Lflute, R, gamma, nu, pts, npts, g)
     integer,  intent(in)  :: nu, npts
-    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), R, pts(3,npts)
+    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), R, gamma, pts(3,npts)
     real(dp), intent(out) :: g(npts)
     integer  :: p, i
-    real(dp) :: ahat(3,nu), w(3), lam, d
+    real(dp) :: ahat(3,nu), w(3), lam, d, tg, cg, rho
+    tg = tan(gamma); cg = cos(gamma)        ! gamma=0 -> cylinder (tg=0, cg=1)
     do i = 1, nu
       ahat(:,i) = unit3(alpha(:,i))
     end do
@@ -102,7 +103,8 @@ contains
         w = pts(:,p) - q0(:,i)
         lam = dot3(w, ahat(:,i))
         lam = max(0.0_dp, min(Lflute(i), lam))     ! finite engaged flute
-        d = norm3(w - lam*ahat(:,i)) - R
+        rho = R + lam*tg                            ! local tool radius (cone)
+        d = (norm3(w - lam*ahat(:,i)) - rho) * cg   ! signed dist to cone surface
         if (d < g(p)) g(p) = d
       end do
     end do
@@ -114,32 +116,35 @@ contains
   !> swept tool volume in the radial direction. Overcut points move inward
   !> (gouge), undercut points move outward (leftover stock). Returns the machined
   !> point mpts(3,npts) for a design-point cloud pts(3,npts).
-  subroutine swept_surface(q0, alpha, Lflute, R, nu, pts, npts, mpts)
+  subroutine swept_surface(q0, alpha, Lflute, R, gamma, nu, pts, npts, mpts)
     integer,  intent(in)  :: nu, npts
-    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), R, pts(3,npts)
+    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), R, gamma, pts(3,npts)
     real(dp), intent(out) :: mpts(3,npts)
     integer  :: p, i, ibest
     real(dp) :: ahat(3,nu), w(3), lam, d, dbest, axpt(3), rad(3), rn, lbest
+    real(dp) :: tg, cg, rho
+    tg = tan(gamma); cg = cos(gamma)
     do i = 1, nu
       ahat(:,i) = unit3(alpha(:,i))
     end do
     do p = 1, npts
-      ! the swept-volume boundary follows the cylinder that cuts deepest here:
+      ! the swept-volume boundary follows the cutter that cuts deepest here:
       ! the minimum SIGNED distance (consistent with swept_deviation).
       dbest = huge(1.0_dp); ibest = 1; lbest = 0.0_dp
       do i = 1, nu
         w = pts(:,p) - q0(:,i)
         lam = dot3(w, ahat(:,i))
         lam = max(0.0_dp, min(Lflute(i), lam))
-        d = norm3(w - lam*ahat(:,i)) - R
+        rho = R + lam*tg
+        d = (norm3(w - lam*ahat(:,i)) - rho) * cg
         if (d < dbest) then; dbest = d; ibest = i; lbest = lam; end if
       end do
-      ! project the point onto the chosen cylinder surface, radially
+      ! project the point onto the chosen cutter surface at its local radius
       axpt = q0(:,ibest) + lbest*ahat(:,ibest)
       rad  = pts(:,p) - axpt
       rn   = norm3(rad)
       if (rn > 1.0e-12_dp) then
-        mpts(:,p) = axpt + R * (rad / rn)
+        mpts(:,p) = axpt + (R + lbest*tg) * (rad / rn)
       else
         mpts(:,p) = pts(:,p)
       end if
