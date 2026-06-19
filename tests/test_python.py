@@ -24,6 +24,20 @@ def main():
     assert r["cycle_time_s"] > 0.0, "non-positive cycle time"
     assert r["machine_path"].shape[1] == 5, "machine path must be 5-axis"
 
+    # GUI model + charts are Qt-free and must work headless
+    try:
+        from bladecam.gui.model import AppModel, PARAM_SPEC, STRATEGIES
+        from bladecam.gui import charts
+        gm = AppModel()
+        assert set(STRATEGIES) and len(PARAM_SPEC) > 0
+        gr = gm.compute_current()
+        cmp = gm.compute_compare()
+        charts.deviation_chart(cmp)
+        charts.machinability_chart(gr["delta"], gr["dev"])
+        charts.feed_chart(gr["seglen"], gr["aprof"])
+    except ImportError:
+        print("  (skipping GUI-model/charts check: matplotlib unavailable)")
+
     with tempfile.TemporaryDirectory() as d:
         csv = os.path.join(d, "rails.csv")
         stl = os.path.join(d, "blade.stl")

@@ -95,10 +95,18 @@ Set `BLADECAM_LIB=/path/to/libbladecam.so` to point at the library explicitly.
 - **Packaging**: `pyproject.toml`, `build.sh`, and a Python pipeline smoke
   test wired into `ctest`.
 
-**GUI** — `viewer.py`: real-time PySide6 + PyVista app. Live 3D blade flank
-coloured by deviation, striction curve, 5-axis cutter axes; sliders for
-geometry / tool / strategy (incl. global) / machine / process; live
-peak-deviation, jerk, cycle-time and collision readouts; G-code export.
+**GUI** — architected desktop app in `bladecam/gui/` (PySide6 + PyVista +
+matplotlib):
+- `model.py` — Qt-free application state, **parameter schema** (`PARAM_SPEC`)
+  and **strategy registry** (`STRATEGIES`); add a parameter or strategy in one
+  line. Fully headless-testable (covered by the ctest Python suite).
+- `worker.py` — **background compute** (QThreadPool) so the UI never blocks.
+- `charts.py` — Qt-free matplotlib panels (deviation-by-strategy, machinability
+  map, TOPP feed profile); reusable for reports/CI thumbnails.
+- `main.py` — **dockable** main window (Parameters · 3D view · Results ·
+  Analysis), menus/toolbar/status bar, STL & rails import, STL/G-code export.
+
+  Run: `PYTHONPATH=. python -m bladecam.viewer` (or `-m bladecam.gui.main`).
 
 ## Roadmap
 
