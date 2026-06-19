@@ -50,6 +50,25 @@ def main():
           "blade unreachable on a 10 mm-cube machine",
           f"({sorted(tiny['axis_violations'])})")
 
+    # structural model: the trunnion TABLE as a static obstacle. A tool assembly
+    # tilted toward the table must be caught; one going away (vertical) clears.
+    from bladecam import core
+    tm = machine.Machine(table_radius=100.0)
+    tbl = machine.structure_obstacles(tm, mount_z=0.0, depth=40, n=24)
+    check(tbl.shape[0] > 100 and tbl.shape[1] == 3, "table obstacle cloud built")
+    segR = np.array([5., 10., 15.]); segLo = np.array([0., 22., 64.]); segHi = np.array([20., 62., 104.])
+    q0 = np.array([[80., 0, 2.]])
+    up = core.assembly_clearance(q0, np.array([[0., 0, 1.]]), segR, segLo, segHi, tbl, nscan=6).min()
+    ax = np.array([[-0.7, 0, -0.7]]); ax = ax / np.linalg.norm(ax)
+    tl = core.assembly_clearance(q0, ax, segR, segLo, segHi, tbl, nscan=6).min()
+    check(up > 0, "assembly clears the table when axis points away", f"({up:.2f})")
+    check(tl < 0, "assembly tilted toward the table is caught", f"({tl:.2f})")
+
+    # pipeline marks structural_check on when a machine profile is supplied
+    big = compute(Params(strategy="global",
+                         machine=machine.get_machine("Generic 5-axis trunnion")))
+    check(big.get("structural_check") is True, "pipeline runs the structural check")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)

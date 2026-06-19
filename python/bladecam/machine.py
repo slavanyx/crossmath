@@ -82,3 +82,28 @@ DEFAULT_MACHINES = {
 
 def get_machine(name: str) -> "Machine":
     return DEFAULT_MACHINES.get(name, Machine())
+
+
+def structure_obstacles(m: "Machine", mount_z: float, depth: float = 80.0,
+                        n: int = 24) -> np.ndarray:
+    """Point cloud of the machine's structural envelope in the PART frame: the
+    trunnion TABLE the workpiece is mounted on -- a disc of radius table_radius
+    whose top sits at z=mount_z (below the part), extending downward by `depth`.
+
+    In table-table A-C kinematics the table tilts/rotates WITH the part, so in
+    part coordinates it is a static obstacle: the tool assembly (holder/spindle)
+    must clear it, which it may not at a steep lead/lean tilt or deep reach.
+    Returns (npts,3); sample the top disc + the cylindrical rim.
+    """
+    R = m.table_radius
+    th = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+    pts = []
+    # top disc (rings) at z = mount_z
+    for r in np.linspace(0.15 * R, R, max(3, n // 3)):
+        pts.append(np.column_stack([r*np.cos(th), r*np.sin(th),
+                                    np.full_like(th, mount_z)]))
+    # cylindrical rim down to mount_z - depth
+    for z in np.linspace(mount_z - depth, mount_z, max(3, n // 4)):
+        pts.append(np.column_stack([R*np.cos(th), R*np.sin(th),
+                                    np.full_like(th, z)]))
+    return np.ascontiguousarray(np.vstack(pts))
