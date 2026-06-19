@@ -147,6 +147,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_machine.py)
   set_tests_properties(machine PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Preset system (machine/tool/strategy save/load + JSON round-trip)
+  add_test(NAME presets
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_presets.py)
+  set_tests_properties(presets PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class

@@ -97,19 +97,29 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(helpm, "About", self.about)
 
     def _build_toolbar(self):
+        # OrcaSlicer-style preset row: Machine / Tool / Strategy presets
+        pb = self.addToolBar("Presets")
+        self.preset_cbs = {}
+        for kind in ("machine", "tool", "strategy"):
+            pb.addWidget(QtWidgets.QLabel(f"  {kind.title()}: "))
+            cb = QtWidgets.QComboBox()
+            cb.setMinimumWidth(150)
+            cb.addItems(self.model.presets.names(kind))
+            cb.setCurrentText(self.model.preset_names[kind])
+            cb.currentTextChanged.connect(lambda n, k=kind: self._on_preset(k, n))
+            self.preset_cbs[kind] = cb
+            pb.addWidget(cb)
+        pb.addAction("Save preset…", self.save_preset_dialog)
+        pb.addAction("Delete preset…", self.delete_preset_dialog)
+        pb.addAction("Machine config…", self.edit_machine)
+
         tb = self.addToolBar("Main")
+        self.insertToolBarBreak(tb)
         tb.addWidget(QtWidgets.QLabel(" Strategy: "))
         self.strategy_cb = QtWidgets.QComboBox()
         self.strategy_cb.addItems(STRATEGIES)
         self.strategy_cb.currentTextChanged.connect(self._on_strategy)
         tb.addWidget(self.strategy_cb)
-        tb.addWidget(QtWidgets.QLabel(" Machine: "))
-        self.machine_cb = QtWidgets.QComboBox()
-        self.machine_cb.addItems(list(machine_lib.DEFAULT_MACHINES.keys()))
-        self.machine_cb.setCurrentText(self.model.machine_name)
-        self.machine_cb.currentTextChanged.connect(self._on_machine)
-        tb.addWidget(self.machine_cb)
-        tb.addAction("Machine config…", self.edit_machine)
         tb.addAction("Recompute", lambda: self.recompute(compare=True))
         tb.addAction("Save G-code", self.save_gcode)
         tb.addSeparator()
@@ -206,9 +216,55 @@ class MainWindow(QtWidgets.QMainWindow):
         self.model.strategy = s
         self._timer.start(50)
 
-    def _on_machine(self, name):
-        self.model.select_machine(name)
+    def _on_preset(self, kind, name):
+        """Apply a Machine/Tool/Strategy preset and refresh the editors."""
+        if not name:
+            return
+        self.model.apply_preset(kind, name)
+        if kind == "strategy":
+            self.strategy_cb.setCurrentText(self.model.strategy)
+        self._sync_editors()
         self._timer.start(50)
+
+    def _sync_editors(self):
+        """Push model.values back into the parameter spin-boxes (after a preset
+        changes them) without retriggering recompute per edit."""
+        for key, ed in self._editors.items():
+            if key in self.model.values:
+                ed.blockSignals(True)
+                ed.setValue(self.model.values[key])
+                ed.blockSignals(False)
+
+    def save_preset_dialog(self):
+        kind, ok = QtWidgets.QInputDialog.getItem(
+            self, "Save preset", "Category:", list(self.model.presets.KINDS), 0, False)
+        if not ok:
+            return
+        name, ok = QtWidgets.QInputDialog.getText(
+            self, "Save preset", f"Name for the {kind} preset:")
+        if not ok or not name:
+            return
+        self.model.save_preset(kind, name)
+        cb = self.preset_cbs[kind]
+        if cb.findText(name) < 0:
+            cb.addItem(name)
+        cb.blockSignals(True); cb.setCurrentText(name); cb.blockSignals(False)
+        self.status.showMessage(f"saved {kind} preset '{name}'")
+
+    def delete_preset_dialog(self):
+        kind, ok = QtWidgets.QInputDialog.getItem(
+            self, "Delete preset", "Category:", list(self.model.presets.KINDS), 0, False)
+        if not ok:
+            return
+        name = self.preset_cbs[kind].currentText()
+        if self.model.presets.is_builtin(kind, name):
+            self.status.showMessage(f"'{name}' is a built-in preset (read-only)")
+            return
+        if self.model.presets.delete(kind, name):
+            idx = self.preset_cbs[kind].findText(name)
+            if idx >= 0:
+                self.preset_cbs[kind].removeItem(idx)
+            self.status.showMessage(f"deleted {kind} preset '{name}'")
 
     def edit_machine(self):
         """Machine configuration editor: edit the active profile's travel/rotary
