@@ -310,6 +310,20 @@ def _rails_from_face_edges(face, nu):
     return np.ascontiguousarray(a), np.ascontiguousarray(b)
 
 
+def _orient_hub_first(a, b):
+    """Normalise rail orientation so extraction is consistent across blades:
+    `a` is the HUB rail (smaller mean radius from the spin axis Z) and station 0
+    is the lower-Z (hub-platform) end. Without this, different faces of a blisk
+    come out with hub/shroud swapped or reversed, breaking batch optimisation,
+    collision (neighbour rotation) and G-code ordering."""
+    a = np.asarray(a, float); b = np.asarray(b, float)
+    if np.mean(np.hypot(b[:, 0], b[:, 1])) < np.mean(np.hypot(a[:, 0], a[:, 1])):
+        a, b = b, a                      # ensure a = hub (inner radius)
+    if a[0, 2] > a[-1, 2]:               # ensure station 0 = lower-Z end
+        a, b = a[::-1], b[::-1]
+    return np.ascontiguousarray(a), np.ascontiguousarray(b)
+
+
 def _rails_from_face(face, nu: int = 60, ndetect: int = 11):
     """Extract hub/shroud rails of a single B-rep face.
 
@@ -325,7 +339,7 @@ def _rails_from_face(face, nu: int = 60, ndetect: int = 11):
 
     edge_rails = _rails_from_face_edges(face, nu)
     if edge_rails is not None:
-        return edge_rails
+        return _orient_hub_first(*edge_rails)
 
     s = BRep_Tool.Surface_s(face)
     umin, umax, vmin, vmax = BRepTools.UVBounds_s(face)
@@ -353,7 +367,7 @@ def _rails_from_face(face, nu: int = 60, ndetect: int = 11):
     else:                                       # v is the ruling (hub->shroud)
         a = np.array([val(umin + t*(umax-umin), vmin) for t in ps])
         b = np.array([val(umin + t*(umax-umin), vmax) for t in ps])
-    return np.ascontiguousarray(a), np.ascontiguousarray(b)
+    return _orient_hub_first(a, b)
 
 
 def rails_from_all_faces(shape, nu: int = 60, min_area_frac: float = 0.3):

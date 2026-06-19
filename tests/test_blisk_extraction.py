@@ -76,6 +76,21 @@ def main():
                       np.allclose(b[0], B[0], atol=1e-2)
                       for (A, B) in blades)
         check(matched, "extracted blade matches a ground-truth blade corner")
+    # rails are consistently oriented: a = hub (inner radius), station 0 = lower Z
+    for (a, b) in rails:
+        ra = np.mean(np.hypot(a[:, 0], a[:, 1]))
+        rb = np.mean(np.hypot(b[:, 0], b[:, 1]))
+        check(ra <= rb, "rail a is the hub (inner radius)", f"({ra:.1f}<= {rb:.1f})")
+        check(a[0, 2] <= a[-1, 2], "station 0 is the lower-Z (hub) end")
+
+    # direct unit check of the orientation normaliser (no CAD needed): a
+    # shroud-first, Z-reversed pair must come back hub-first, low-Z-first
+    aa = np.column_stack([55*np.cos(0.6*u), 55*np.sin(0.6*u), 20 - 20*u])  # outer, hi->lo
+    bb = np.column_stack([30*np.cos(0.6*u), 30*np.sin(0.6*u), -20*u])      # inner
+    oa, ob = cadio._orient_hub_first(aa, bb)
+    check(np.mean(np.hypot(oa[:, 0], oa[:, 1])) < np.mean(np.hypot(ob[:, 0], ob[:, 1]))
+          and oa[0, 2] <= oa[-1, 2], "orient_hub_first normalises a swapped/reversed pair")
+
     # each drives the optimiser
     r = compute(Params(strategy="global", rails=rails[0], nu=30))
     check(r["dev"].max() < 0.1, "extracted blisk blade optimises well",
