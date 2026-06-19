@@ -129,6 +129,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_abi_differential.py)
   set_tests_properties(abi_differential PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Dexel material-removal simulation (verified MRR / carve primitive)
+  add_test(NAME dexel
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_dexel.py)
+  set_tests_properties(dexel PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
@@ -148,5 +154,6 @@ if(CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")
     ${CMAKE_SOURCE_DIR}/core/src/topp.f90
     ${CMAKE_SOURCE_DIR}/core/src/chatter.f90
     ${CMAKE_SOURCE_DIR}/core/src/collision.f90
+    ${CMAKE_SOURCE_DIR}/core/src/dexel.f90
     ${CMAKE_SOURCE_DIR}/core/src/bladecam_capi.f90)
 endif()

@@ -69,6 +69,8 @@ _lib.bc_swept_surface.argtypes = [_DBL, _DBL, _DBL, c_double, c_double,
                                   c_double, c_double, c_int, _DBL, c_int, _DBL]
 _lib.bc_deviation_barrel.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
                                      _DBL, c_int, _DBL]
+_lib.bc_dexel_carve.argtypes = [_DBL, _DBL, c_double, _DBL, c_int,
+                                _DBL, _DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
@@ -297,6 +299,23 @@ def swept_surface(q0, alpha, Lflute, R: float, pts: np.ndarray,
                           c_double(gamma), c_double(Rb), c_double(lamc),
                           c_int(nu), _ptr(pts), c_int(npts), _ptr(mpts))
     return mpts
+
+
+def dexel_carve(q0, alpha, R, Lf, orig, dir, seg0):
+    """Dexel material-removal carve. The swept capped-cylinder tool (poses
+    q0,alpha (nu,3); flute lengths Lf (nu,)) is subtracted from a field of rays:
+    ray r runs from orig[r] along unit dir[r] with material over t in [0,seg0[r]].
+    Returns (removed[nray], first_cut[nray]) -- removed length (union over poses)
+    and the smallest removed t (the machined-surface crossing) per ray."""
+    q0 = _c(q0); alpha = _c(alpha); Lf = _c(Lf)
+    orig = _c(orig); dir = _c(dir); seg0 = _c(seg0)
+    nu = q0.shape[0]; nray = orig.shape[0]
+    removed = np.empty(nray, dtype=np.float64)
+    first_cut = np.empty(nray, dtype=np.float64)
+    _lib.bc_dexel_carve(_ptr(q0), _ptr(alpha), c_double(R), _ptr(Lf), c_int(nu),
+                        _ptr(orig), _ptr(dir), _ptr(seg0), c_int(nray),
+                        _ptr(removed), _ptr(first_cut))
+    return removed, first_cut
 
 
 def ik_path(Q: np.ndarray, O: np.ndarray, pivot, kind: int = 0) -> np.ndarray:
