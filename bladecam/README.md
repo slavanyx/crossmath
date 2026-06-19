@@ -39,13 +39,14 @@ ctest --test-dir build --output-on-failure
 
 Produces `build/core/libbladecam.{so,dylib}` (or `bladecam.dll` on Windows).
 
-`ctest` runs six suites: `core` (Fortran unit tests), `python` (pipeline +
-GUI-model smoke), `audit_regressions` (one named test per bug found in the
-adversarial audit, each mutation-verified), `validation` (physics checks:
-developable surface mills to ~0, optimization monotonic, global beats the naive
-twist-error bound), `cad_step` (STEP/IGES round-trip, skips without OCC), and
-`warnings` (compiles the core with `-Werror=do-subscript,unused-variable`).
-CI runs them on every push (`.github/workflows/bladecam.yml`).
+`ctest` runs 14 suites: `core` (Fortran units), `python` (pipeline + GUI-model
+smoke), `audit_regressions` / `validation` (physics + mutation-verified
+regression checks, incl. scale-invariance & TOPP feasibility), `cad_step` /
+`rail_extraction` / `trimmed_face` / `blisk_extraction` (OCC CAD paths, skip
+without OpenCASCADE), `collision`, `frf_chatter`, `double_flank`,
+`stacked_passes`, `toolpaths`, and `warnings` (compiles the core with
+`-Werror=do-subscript,unused-variable`). CI runs them on every push
+(`.github/workflows/bladecam.yml`).
 
 Benchmark: `cd python && PYTHONPATH=. python benchmark.py` (accuracy/time vs
 cutter radius and blade twist).
@@ -72,8 +73,9 @@ Set `BLADECAM_LIB=/path/to/libbladecam.so` to point at the library explicitly.
 
 **Phase 2 (positioning optimization)**
 - Per-ruling **min–max (Chebyshev)** refinement of the cutter axis (4-DOF
-  Nelder–Mead in the Fortran core). On the demo blade this cuts peak flank
-  deviation by ~89% vs two-point (789 → 85 µm).
+  scale-invariant Nelder–Mead with shrinking-step restarts, in the Fortran
+  core). On the demo blade it drives peak flank deviation from the two-point
+  seed (~789 µm) to **sub-micron**.
 - **Tolerance-constrained global smoothing**: low-pass-filters the cutter-axis
   field within a deviation budget, reducing orientation jerk (rotary-axis
   effort / cycle time) with no loss of worst-case accuracy.
@@ -95,11 +97,11 @@ Set `BLADECAM_LIB=/path/to/libbladecam.so` to point at the library explicitly.
 
 **Phase 5 (global optimization, CAD I/O, packaging)**
 - **Global envelope optimization** (`optimize_global` in `flank_opt.f90`):
-  Gauss–Seidel block coordinate descent minimising
-  `J = Σ max_v|g_i| + μ·Σ ‖axis_i − neighbour_avg‖²`, optimising accuracy and
-  orientation smoothness jointly. On the demo blade it reaches ~13 µm peak
-  deviation with the smoothest axis field *and* the fastest cycle time —
-  dominating min-max / smoothed on every metric.
+  Gauss–Seidel block coordinate descent minimising the (scale-invariant,
+  R-normalised) objective `J = Σ max_v|g_i|/R + μ·Σ ‖axis_i − neighbour_avg‖²`,
+  jointly optimising accuracy and orientation smoothness. On the demo blade
+  (a ruled surface) it reaches **sub-micron** deviation; `μ` then trades a
+  little accuracy for a smoother axis field.
 - **CAD I/O** (`cadio.py`): STL mesh read/write (ASCII + binary), hub/shroud
   rail-polyline CSV import/export for externally-designed blades. (STEP/IGES
   needs a B-rep kernel; the rail/STL path is the bridge.)
@@ -129,11 +131,12 @@ matplotlib):
   analysis tab. More damping raises the stable depth (verified).
 
 **Phase 7 (CI, validation, real CAD)**
-- **CI**: GitHub Actions builds the core and runs all six `ctest` suites on
+- **CI**: GitHub Actions builds the core and runs the `ctest` suites on
   every push (`.github/workflows/bladecam.yml`).
 - **Validation + benchmark**: exact developable case, optimization
   monotonicity, and a documented accuracy/time benchmark showing the global
-  optimum ~100-400x below the naive twist-error bound.
+  optimum far below the naive twist-error bound (orders of magnitude on a
+  ruled blade).
 - **STEP / IGES import** (`cadio.read_step`/`read_iges`/`read_cad`, via
   OpenCASCADE): real CAD blades load as tessellated meshes for display,
   collision and STL export. Install with `pip install -e ".[cad]"`.

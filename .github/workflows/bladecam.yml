@@ -29,8 +29,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Python deps (headless test deps only)
-        run: python -m pip install numpy matplotlib
+      - name: Install Python deps (numpy + matplotlib + OpenCASCADE for CAD tests)
+        run: python -m pip install numpy matplotlib cadquery-ocp
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
