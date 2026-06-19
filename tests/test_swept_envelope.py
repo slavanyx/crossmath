@@ -61,6 +61,16 @@ def main():
     check(r_on["dev"].max() >= r_off["dev"].max(),
           "swept penalty trades per-ruling deviation")
 
+    # swept_field (per-point machined-surface error map) is exposed for 3D
+    # colouring and its overcut depth must equal the reported scalar overcut.
+    r = compute(Params(strategy="global", twist=1.0))
+    sf = r["swept_field"]
+    check(sf.shape == r["surf"].shape[:2], "swept_field matches surface grid",
+          f"({sf.shape} vs {r['surf'].shape[:2]})")
+    oc = float(max(0.0, -sf.min()))
+    check(abs(oc - r["swept_overcut"]) < 1e-9,
+          "swept_field overcut depth == swept_overcut scalar")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)
