@@ -33,6 +33,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_rail_extraction.py)
   set_tests_properties(rail_extraction PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Measured-FRF stability lobes vs the modal model
+  add_test(NAME frf_chatter
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_frf_chatter.py)
+  set_tests_properties(frf_chatter PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class

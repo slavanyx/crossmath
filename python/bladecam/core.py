@@ -58,6 +58,8 @@ _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
 _lib.bc_stability_lobes.argtypes = [c_double, c_double, c_double, c_double,
                                     c_int, c_int, c_int, _DBL, _DBL]
+_lib.bc_stability_lobes_frf.argtypes = [_DBL, _DBL, _DBL, c_int, c_double,
+                                        c_int, c_int, _DBL, _DBL]
 
 
 def _c(arr: np.ndarray) -> np.ndarray:
@@ -157,6 +159,22 @@ def stability_lobes(wn_hz: float, zeta: float, k_stiff: float, Kt: float,
     _lib.bc_stability_lobes(c_double(wn_hz), c_double(zeta), c_double(k_stiff),
                             c_double(Kt), c_int(n_teeth), c_int(nlobes),
                             c_int(nptsper), _ptr(rpm), _ptr(alim))
+    return rpm, alim
+
+
+def stability_lobes_frf(freq, reG, imG, Kt: float, n_teeth: int = 4,
+                        nlobes: int = 6):
+    """Stability lobes from a measured tool-tip receptance G=reG+i*imG (mm/N)
+    sampled at frequencies `freq` (Hz). Returns (rpm[], alim[]) of length
+    nlobes*len(freq); no-chatter samples are NaN."""
+    freq = _c(freq); reG = _c(reG); imG = _c(imG)
+    nf = freq.shape[0]
+    n = nlobes * nf
+    rpm = np.empty(n, dtype=np.float64)
+    alim = np.empty(n, dtype=np.float64)
+    _lib.bc_stability_lobes_frf(_ptr(freq), _ptr(reG), _ptr(imG), c_int(nf),
+                                c_double(Kt), c_int(n_teeth), c_int(nlobes),
+                                _ptr(rpm), _ptr(alim))
     return rpm, alim
 
 

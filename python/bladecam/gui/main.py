@@ -57,6 +57,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(filem, "Import rails CSV…", self.import_rails)
         self._act(filem, "Load blade from STEP/IGES…", self.load_blade_cad)
         self._act(filem, "Overlay CAD (STL/STEP/IGES)…", self.import_cad)
+        self._act(filem, "Load tool-tip FRF (CSV)…", self.load_frf)
         self._act(filem, "Use parametric blade", self.use_parametric)
         filem.addSeparator()
         self._act(filem, "Export blade STL…", self.export_stl)
@@ -259,16 +260,35 @@ class MainWindow(QtWidgets.QMainWindow):
             self.results_tbl.setItem(i, 1, QtWidgets.QTableWidgetItem(v))
 
     def _update_chatter(self):
-        """Stability lobes from default tool-tip modal params (illustrative)."""
+        """Stability lobes from a measured FRF if loaded, else a modal default."""
         from .. import core
         from ..process import ProcessParams
         Kt = ProcessParams().Kt
-        nlobes, nptsper = 6, 80
-        # modal params: 800 Hz tool-tip mode, 3% damping, 2e4 N/mm stiffness
-        rpm, alim = core.stability_lobes(800.0, 0.03, 2.0e4, Kt,
-                                         n_teeth=4, nlobes=nlobes, nptsper=nptsper)
+        nlobes = 6
+        if self.model.frf is not None:
+            freq, re, im = self.model.frf
+            rpm, alim = core.stability_lobes_frf(freq, re, im, Kt, 4, nlobes)
+            nptsper = len(freq)
+        else:
+            nptsper = 80
+            rpm, alim = core.stability_lobes(800.0, 0.03, 2.0e4, Kt,
+                                             n_teeth=4, nlobes=nlobes, nptsper=nptsper)
         self._update_chart("Chatter", charts.chatter_chart,
                            rpm, alim, nlobes, nptsper, ProcessParams().rpm)
+
+    def load_frf(self):
+        from ..process import read_frf_csv
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Load tool-tip FRF", "", "CSV (*.csv)")
+        if not fn:
+            return
+        try:
+            self.model.frf = read_frf_csv(fn)
+        except Exception as e:
+            self.status.showMessage(f"FRF load failed: {e}")
+            return
+        self._update_chatter()
+        self.status.showMessage(f"loaded measured FRF: {fn}")
 
     def _update_chart(self, tab, fn, *args):
         c = self.canvases[tab]
@@ -301,8 +321,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.recompute(compare=True)
 
     def use_parametric(self):
-        """Drop any loaded CAD blade/overlay and return to the parametric generator."""
+        """Drop any loaded CAD blade/overlay/FRF and return to defaults."""
         self.model.rails = None
+        self.model.frf = None
         self._overlay = None
         self.recompute(compare=True)
 

@@ -53,6 +53,7 @@ class AppModel:
         self.values["feed_max"] = ProcessParams().feed_max_mm_min
         self.values["dev_allow"] = ProcessParams().dev_allow_um
         self.rails = None  # optional external (a, b)
+        self.frf = None    # optional measured FRF (freq, reG, imG)
 
     def build_params(self, strategy=None) -> Params:
         v = self.values
