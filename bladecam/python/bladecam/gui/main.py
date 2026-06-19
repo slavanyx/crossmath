@@ -33,6 +33,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pool = QtCore.QThreadPool.globalInstance()
         self.last = None
         self._editors = {}
+        self._overlay = None      # persistent imported-CAD overlay mesh
 
         self.setWindowTitle("BladeCAM — 5-axis flank milling")
         self.setDockNestingEnabled(True)
@@ -201,6 +202,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 pv.Line(q0[i] - al[i]*5.0, q0[i] + al[i]*30.0),
                 color="black", line_width=2)
         self._show_tool_at(self.anim_slider.value())
+        # re-add any imported CAD overlay (plotter.clear() above wipes it)
+        if self._overlay is not None:
+            self.plotter.add_mesh(self._overlay, color="lightgray",
+                                  opacity=0.4, name="imported_cad")
         if cam is not None:
             self.plotter.camera_position = cam
         else:
@@ -296,8 +301,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.recompute(compare=True)
 
     def use_parametric(self):
-        """Drop any loaded CAD blade and return to the parametric generator."""
+        """Drop any loaded CAD blade/overlay and return to the parametric generator."""
         self.model.rails = None
+        self._overlay = None
         self.recompute(compare=True)
 
     def import_cad(self):
@@ -312,7 +318,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.status.showMessage(f"CAD import failed: {e}")
             return
         faces = np.hstack([np.full((len(f), 1), 3), f]).ravel()
-        self.plotter.add_mesh(pv.PolyData(v, faces), color="lightgray",
+        # persist so the overlay survives the plotter.clear() in _draw_3d
+        self._overlay = pv.PolyData(v, faces)
+        self.plotter.add_mesh(self._overlay, color="lightgray",
                               opacity=0.4, name="imported_cad")
         self.plotter.render()
 
