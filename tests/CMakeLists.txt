@@ -52,6 +52,12 @@ if(PYTHON3)
   set_tests_properties(blisk_extraction PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Swept-envelope deviation (cross-station interference)
+  add_test(NAME swept_envelope
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_swept_envelope.py)
+  set_tests_properties(swept_envelope PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Tool+holder collision / gouge (signed distance)
   add_test(NAME collision
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_collision.py)

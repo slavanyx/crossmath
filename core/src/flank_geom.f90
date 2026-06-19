@@ -3,7 +3,7 @@ module flank_mod
   use vec3_mod
   implicit none
   private
-  public :: two_point, deviation, deviation_cone, max_dev_ruling
+  public :: two_point, deviation, deviation_cone, max_dev_ruling, swept_deviation
 
 contains
 
@@ -63,6 +63,32 @@ contains
       g(i) = (norm3(perp) - rho) * cg
     end do
   end subroutine deviation_cone
+
+  !> Swept-envelope deviation: for each design point, the signed distance to the
+  !> CLOSEST of all cutter positions (finite flute segments), minus R. Captures
+  !> cross-station interference (the tool at one station gouging the surface that
+  !> "belongs" to another) which the per-station deviation cannot see. g < 0 is a
+  !> real overcut/gouge of the machined part.
+  subroutine swept_deviation(q0, alpha, Lflute, R, nu, pts, npts, g)
+    integer,  intent(in)  :: nu, npts
+    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), R, pts(3,npts)
+    real(dp), intent(out) :: g(npts)
+    integer  :: p, i
+    real(dp) :: ahat(3,nu), w(3), lam, d
+    do i = 1, nu
+      ahat(:,i) = unit3(alpha(:,i))
+    end do
+    do p = 1, npts
+      g(p) = huge(1.0_dp)
+      do i = 1, nu
+        w = pts(:,p) - q0(:,i)
+        lam = dot3(w, ahat(:,i))
+        lam = max(0.0_dp, min(Lflute(i), lam))     ! finite engaged flute
+        d = norm3(w - lam*ahat(:,i)) - R
+        if (d < g(p)) g(p) = d
+      end do
+    end do
+  end subroutine swept_deviation
 
   !> Convenience: max |g| along a single ruling sampled at nv stations,
   !> for a given cutter axis. Returns the peak absolute deviation.
