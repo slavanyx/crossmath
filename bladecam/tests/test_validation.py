@@ -87,11 +87,47 @@ def test_topp_respects_limits():
           f"({(np.abs(acc)/amax).max():.3f})")
 
 
+def test_topp_handles_cusp():
+    """At a velocity cusp (an axis reverses, q'->0 while q''!=0) the path
+    acceleration is q''*a with no q'*sdd term to trade against, so feasibility
+    requires |q''|a<=amax. The naive single forward/backward scheme left this
+    unbounded and posted accelerations ~10x the limit. Check both an exact
+    1-DOF cusp and the realistic case (rotary axis reverses while the arc-length
+    DOF keeps advancing)."""
+    from bladecam import core
+
+    def accel_ratio(qq, vmax, amax):
+        n = qq.shape[0]; ds = 1.0 / (n - 1)
+        aprof, _ = core.topp(qq, vmax, amax)
+        qp = np.gradient(qq, ds, axis=0); qpp = np.gradient(qp, ds, axis=0)
+        # midpoint joint acceleration q''*a + q'*sdd over each segment
+        r = 0.0
+        for k in range(n - 1):
+            sdd = (aprof[k+1] - aprof[k]) / (2*ds)
+            am = 0.5*(aprof[k]+aprof[k+1])
+            qpm = 0.5*(qp[k]+qp[k+1]); qppm = 0.5*(qpp[k]+qpp[k+1])
+            r = max(r, np.max(np.abs(qppm*am + qpm*sdd) / amax))
+        return r
+
+    n = 121; s = np.linspace(0, 1, n)
+    # realistic: rotary reversal + monotone arc length (what the pipeline emits)
+    qq = np.column_stack([0.8*np.sin(2*np.pi*s), np.linspace(0, 50, n)])
+    r1 = accel_ratio(qq, np.array([1.5, 200.]), np.array([5., 1e4]))
+    check(r1 <= 2.0, "TOPP bounds acceleration through a rotary cusp",
+          f"(ratio {r1:.2f}, was ~10x before the fix)")
+    # exact 1-DOF cusp
+    r2 = accel_ratio((2.0*np.sin(np.pi*s)).reshape(n, 1),
+                     np.array([1.0]), np.array([1.0]))
+    check(r2 <= 2.0, "TOPP bounds acceleration through an exact cusp",
+          f"(ratio {r2:.2f})")
+
+
 def main():
     for fn in (test_developable_mills_to_zero,
                test_optimization_is_monotonic,
                test_global_beats_naive_floor,
-               test_topp_respects_limits):
+               test_topp_respects_limits,
+               test_topp_handles_cusp):
         print(fn.__name__)
         fn()
     if FAILED:
