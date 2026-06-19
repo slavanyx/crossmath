@@ -44,6 +44,20 @@ def main():
     check(clr_one([8, 0, 30]) < 0 and clr_one([8, 0, 10]) > 0,
           "holder geometry catches collisions the flute misses")
 
+    # SWEPT collision: both stations clear an obstacle but the mid-move gouges it
+    from bladecam.pipeline import _densify_poses
+    q0 = np.array([[0., 0, 0], [20., 0, 0]])     # tool translates along x
+    al = np.array([[0., 0, 1], [0., 0, 1]])      # axis +z
+    obst = np.array([[10., 0, 10]])              # sits at mid-span, off both ends
+    args = (5.0, 20.0, 10.0, 5.0, 20.0)          # R, Lf, Rh, gap, Lh
+    per_station = core.tool_clearance(q0, al, obst, *args).min()
+    q0d, ad = _densify_poses(q0, al, 3)
+    swept = core.tool_clearance(q0d, ad, obst, *args).min()
+    check(per_station > 0, "per-station check clears both endpoints",
+          f"({per_station:.2f} mm)")
+    check(swept < 0, "swept check catches the mid-move collision",
+          f"({swept:.2f} mm)")
+
     # pipeline: a very tight blade count collides; a generous one is clear
     tight = compute(Params(strategy="global", n_blades=38))
     loose = compute(Params(strategy="global", n_blades=6))
