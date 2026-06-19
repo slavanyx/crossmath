@@ -99,6 +99,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_kinematics.py)
   set_tests_properties(kinematics PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # End-to-end acceptance: CAD blisk STEP -> extract -> optimise -> G-code
+  add_test(NAME end_to_end
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_end_to_end.py)
+  set_tests_properties(end_to_end PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
