@@ -138,7 +138,7 @@ contains
     ctx_mu = mu; ctx_alpha_nb = alpha_nb; ctx_q0_nb = q0_nb
     ctx_double = .true.
     x = 0.0_dp
-    call nelder_mead(x, 4, 500, fbest)
+    call nm_optimize(x, 4, fbest)
     ctx_double = .false.
     call decode(x, q0, alpha)
   end subroutine refine_double
@@ -164,10 +164,25 @@ contains
     ctx_mu = mu; ctx_alpha_nb = alpha_nb; ctx_q0_nb = q0_nb
 
     x = 0.0_dp
-    call nelder_mead(x, 4, 400, fbest)
+    call nm_optimize(x, 4, fbest)
     call decode(x, q0, alpha)
     emax_pure = peak_dev(a_pt, b_pt, q0, alpha, R, nv)
   end subroutine refine_seeded
+
+  !> Nelder-Mead with shrinking-step restarts: scale-invariant search (DOF are
+  !> non-dimensional, see decode) refined to high precision.
+  subroutine nm_optimize(x, n, fbest)
+    integer,  intent(in)    :: n
+    real(dp), intent(inout) :: x(n)
+    real(dp), intent(out)   :: fbest
+    real(dp) :: step
+    integer  :: r
+    step = 0.10_dp
+    do r = 1, 5
+      call nelder_mead(x, n, 300, fbest, step)
+      step = step * 0.2_dp
+    end do
+  end subroutine nm_optimize
 
   function peak_dev(a_pt, b_pt, q0, alpha, R, nv) result(emax)
     real(dp), intent(in) :: a_pt(3), b_pt(3), q0(3), alpha(3), R
@@ -186,8 +201,10 @@ contains
   subroutine decode(x, q0, alpha)
     real(dp), intent(in)  :: x(4)
     real(dp), intent(out) :: q0(3), alpha(3)
+    ! axis tilt (x1,x2) is dimensionless; the point shift (x3,x4) is in units of
+    ! R so the whole search is scale-invariant (same relative geometry at any size).
     alpha = unit3(ctx_alpha0 + x(1)*ctx_t1 + x(2)*ctx_t2)
-    q0    = ctx_q00 + x(3)*ctx_t1 + x(4)*ctx_t2
+    q0    = ctx_q00 + (x(3)*ctx_t1 + x(4)*ctx_t2) * ctx_R
   end subroutine decode
 
   function objval(x) result(f)
@@ -210,18 +227,22 @@ contains
         f = max(f, abs(g(1)))
       end do
     end if
+    ! non-dimensionalise the deviation by R so the objective (and the optimum)
+    ! is scale-invariant; the point-penalty is likewise made relative to R.
+    f = f / ctx_R
     if (ctx_mu > 0.0_dp) then
       f = f + ctx_mu * ( dot3(alpha - ctx_alpha_nb, alpha - ctx_alpha_nb) &
-                       + ctx_wq * dot3(q0 - ctx_q0_nb, q0 - ctx_q0_nb) )
+                  + ctx_wq * dot3(q0 - ctx_q0_nb, q0 - ctx_q0_nb) / ctx_R**2 )
     end if
   end function objval
 
-  subroutine nelder_mead(x, n, maxiter, fbest)
+  subroutine nelder_mead(x, n, maxiter, fbest, step)
     integer, intent(in)    :: n, maxiter
     real(dp), intent(inout) :: x(n)
     real(dp), intent(out)  :: fbest
+    real(dp), intent(in)   :: step
     real(dp), parameter :: a_r = 1.0_dp, g_e = 2.0_dp, r_c = 0.5_dp, s_h = 0.5_dp
-    real(dp), parameter :: step = 0.05_dp, tol = 1.0e-12_dp
+    real(dp), parameter :: tol = 1.0e-14_dp
     real(dp) :: s(n, n+1), fs(n+1), xc(n), xr(n), xe(n), xcc(n), fr, fe, fc
     integer  :: j, it, lo, hi, hi2
 
