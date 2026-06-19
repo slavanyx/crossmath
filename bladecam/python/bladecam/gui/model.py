@@ -38,6 +38,7 @@ MACHINE_SPEC = [
     ("v_rot",     "Rotary vmax (rad/s)",    0.05, 3.0,  0.05, "float", "Machine / process"),
     ("feed_max",  "Feed ceiling (mm/min)",  200, 20000, 200,  "int",   "Machine / process"),
     ("dev_allow", "Deflection budget (µm)", 5,   500,   5,    "int",   "Machine / process"),
+    ("kind",      "Kinematics 0=table 1=head", 0, 1,    1,    "int",   "Machine / process"),
 ]
 
 
@@ -50,6 +51,7 @@ class AppModel:
         self.strategy = "global"
         # machine/process kept as nested objects, exposed via a few keys
         self.values["v_rot"] = MachineLimits().v_rot
+        self.values["kind"] = MachineLimits().kind
         self.values["feed_max"] = ProcessParams().feed_max_mm_min
         self.values["dev_allow"] = ProcessParams().dev_allow_um
         self.rails = None  # optional external (a, b)
@@ -64,7 +66,7 @@ class AppModel:
             strategy=strategy or self.strategy,
             smooth_window=int(v["smooth_window"]),
             mu=v["mu"], gamma=v["gamma"], nsweeps=int(v["nsweeps"]),
-            machine=MachineLimits(v_rot=v["v_rot"]),
+            machine=MachineLimits(v_rot=v["v_rot"], kind=int(v["kind"])),
             process=ProcessParams(feed_max_mm_min=v["feed_max"],
                                   dev_allow_um=v["dev_allow"]),
             rails=self.rails,

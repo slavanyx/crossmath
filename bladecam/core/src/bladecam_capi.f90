@@ -110,13 +110,13 @@ contains
 
   !> Batch 5-axis inverse kinematics: contact points Q(3,npts) and tool axes
   !> O(3,npts) -> machine axes m(5,npts) = [X,Y,Z,A,C] (A,C in radians).
-  subroutine bc_ik_path(Q, O, npts, piv, m) bind(C, name="bc_ik_path")
-    integer(c_int), value :: npts
+  subroutine bc_ik_path(kind, Q, O, npts, piv, m) bind(C, name="bc_ik_path")
+    integer(c_int), value :: kind, npts
     real(c_double), intent(in)  :: Q(3, npts), O(3, npts), piv(3)
     real(c_double), intent(out) :: m(5, npts)
     integer :: k
     do k = 1, npts
-      call inverse_kin_ac(Q(:, k), O(:, k), piv, m(:, k))
+      call inverse_kin_ac(kind, Q(:, k), O(:, k), piv, m(:, k))
     end do
   end subroutine bc_ik_path
 

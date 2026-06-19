@@ -187,7 +187,7 @@ def compute(p: Params) -> dict:
 
     # --- Phase 3: kinematics (contact point = mid-ruling) ---
     contact = 0.5 * (a + b)
-    m = core.ik_path(contact, alpha, p.pivot)        # (nu, 5) [X,Y,Z,A,C]
+    m = core.ik_path(contact, alpha, p.pivot, kind=p.machine.kind)  # (nu,5) X,Y,Z,A,C
     m[:, 3] = np.unwrap(m[:, 3])                      # unwrap A, C for TOPP
     m[:, 4] = np.unwrap(m[:, 4])
 

@@ -29,29 +29,43 @@ contains
     R = reshape([c,s,0.0_dp, -s,c,0.0_dp, 0.0_dp,0.0_dp,1.0_dp], [3,3])
   end function rotz
 
-  !> (contact point Q, tool axis O, pivot) -> machine axes [X,Y,Z,A,C] (A,C rad)
-  subroutine inverse_kin_ac(Q, O, piv, m)
+  !> (contact point Q, tool axis O, pivot) -> machine axes [X,Y,Z,A,C] (A,C rad).
+  !> kind = 0: table-table (workpiece rotates; linear axes carry the inverse
+  !>           rotation of the contact point).
+  !> kind = 1: head-head (spindle tilts; workpiece fixed, so the linear axes are
+  !>           the contact point directly and only the head orientation rotates).
+  subroutine inverse_kin_ac(kind, Q, O, piv, m)
+    integer,  intent(in)  :: kind
     real(dp), intent(in)  :: Q(3), O(3), piv(3)
     real(dp), intent(out) :: m(5)
     real(dp) :: oo(3), A, C, Pm(3)
     oo = unit3(O)
     A = acos(max(-1.0_dp, min(1.0_dp, oo(3))))
     C = atan2(oo(1), -oo(2))
-    Pm = matmul(rotx(-A), matmul(rotz(-C), Q - piv)) + piv
+    if (kind == 1) then
+      Pm = Q                                    ! head-head: part fixed
+    else
+      Pm = matmul(rotx(-A), matmul(rotz(-C), Q - piv)) + piv
+    end if
     m(1:3) = Pm
     m(4) = A
     m(5) = C
   end subroutine inverse_kin_ac
 
   !> machine axes -> (contact point Q, tool axis O) in part frame
-  subroutine forward_kin_ac(m, piv, Q, O)
+  subroutine forward_kin_ac(kind, m, piv, Q, O)
+    integer,  intent(in)  :: kind
     real(dp), intent(in)  :: m(5), piv(3)
     real(dp), intent(out) :: Q(3), O(3)
     real(dp) :: A, C, RR(3,3)
     A = m(4); C = m(5)
     RR = matmul(rotz(C), rotx(A))
-    Q = matmul(RR, m(1:3) - piv) + piv
     O = matmul(RR, [0.0_dp, 0.0_dp, 1.0_dp])
+    if (kind == 1) then
+      Q = m(1:3)
+    else
+      Q = matmul(RR, m(1:3) - piv) + piv
+    end if
   end subroutine forward_kin_ac
 
 end module kinematics_mod
