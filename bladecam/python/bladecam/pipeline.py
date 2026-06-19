@@ -37,6 +37,7 @@ class Params:
     swept_weight: float = 0.0   # global-optimizer swept-overcut penalty (0 = off)
     swept_window: int = 8       # neighbour index half-width for swept penalty
     collision_substeps: int = 2  # swept-motion sampling between stations
+    fixture_z: float = None      # fixture/table plane z (None = no plane check)
     rails: tuple = None         # optional (a, b) override for external blades
     # machine + process
     machine: MachineLimits = field(default_factory=MachineLimits)
@@ -214,16 +215,22 @@ def compute(p: Params) -> dict:
     m[:, 3] = np.unwrap(m[:, 3])                      # unwrap A, C for TOPP
     m[:, 4] = np.unwrap(m[:, 4])
 
-    # --- collision (tool + holder vs both neighbour blades) and gouge ---
+    # --- collision: full tool ASSEMBLY (flute+holder+spindle) vs neighbour
+    # blades, swept over the whole motion, plus an optional fixture/table plane.
     flat = surf.reshape(-1, 3)
     pitch = 2.0 * np.pi / p.n_blades
     obstacles = np.vstack([flat @ _rotz(pitch).T, flat @ _rotz(-pitch).T])
-    # continuous swept-volume check: the tool+holder clearance is minimised over
-    # the WHOLE motion between consecutive stations (not just sampled sub-poses),
-    # so a mid-move collision can't slip between samples.
-    clr = core.swept_clearance(q0, alpha, obstacles, p.R, pr.flute_len,
-                               pr.holder_dia * 0.5, pr.holder_gap, pr.holder_len,
-                               nscan=max(4, 2 * p.collision_substeps))
+    # stacked assembly segments (axial extents from q0 along the tool axis)
+    hbase = pr.flute_len + pr.holder_gap
+    sbase = hbase + pr.holder_len + pr.spindle_gap
+    seg_R = np.array([p.R, pr.holder_dia*0.5, pr.spindle_dia*0.5])
+    seg_lo = np.array([0.0, hbase, sbase])
+    seg_hi = np.array([pr.flute_len, hbase + pr.holder_len, sbase + pr.spindle_len])
+    plane_pt = None if p.fixture_z is None else np.array([0.0, 0.0, p.fixture_z])
+    clr = core.assembly_clearance(q0, alpha, seg_R, seg_lo, seg_hi, obstacles,
+                                  plane_pt=plane_pt,
+                                  plane_n=np.array([0.0, 0.0, 1.0]),
+                                  nscan=max(4, 2 * p.collision_substeps))
     # holder vs the blade BEING machined: the flute is tangent to this blade by
     # design (a full-tool check there is a false positive), but the holder must
     # still clear it -- it may not at a steep lead/lean tilt, or when the flute
@@ -270,7 +277,7 @@ def compute(p: Params) -> dict:
         delta=delta, q0=q0, alpha=alpha, dev=dev,
         machine_path=m, aprof=aprof, cycle_time_s=cycle_s,
         min_clearance=min_clear, collision_free=collision_free,
-        holder_clearance=holder_min,
+        holder_clearance=holder_min, assembly_clearance=float(clr.min()),
         gouge_max=gouge_max, swept_overcut=swept_overcut, clearance=clr,
         swept_field=swept_field, envelope_surf=envelope_surf,
         orient_jerk=optimize.orientation_jerk(alpha),

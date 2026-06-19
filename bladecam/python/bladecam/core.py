@@ -72,6 +72,9 @@ _lib.bc_deviation_barrel.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
                                      _DBL, c_int, _DBL]
 _lib.bc_dexel_carve.argtypes = [_DBL, _DBL, c_double, _DBL, c_int,
                                 _DBL, _DBL, _DBL, c_int, _DBL, _DBL]
+_lib.bc_assembly_clearance.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL, _DBL,
+                                       c_int, _DBL, c_int, _DBL, _DBL,
+                                       c_int, c_int, _DBL]
 _lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
@@ -304,6 +307,27 @@ def swept_surface(q0, alpha, Lflute, R: float, pts: np.ndarray,
                           c_double(gamma), c_double(Rb), c_double(lamc),
                           c_int(nu), _ptr(pts), c_int(npts), _ptr(mpts))
     return mpts
+
+
+def assembly_clearance(q0, alpha, seg_R, seg_lo, seg_hi, pts,
+                       plane_pt=None, plane_n=None, nscan=12):
+    """Continuous swept clearance of the full tool ASSEMBLY (a stack of coaxial
+    capped-cylinder segments: flute + holder + spindle nose) to an obstacle cloud
+    over the whole motion, plus an optional fixture HALF-SPACE (forbidden where
+    plane_n.(x-plane_pt) < 0). q0,alpha (nu,3); seg_* are (nseg,) arrays of radius
+    and axial [lo,hi] from q0 along alpha; pts (npts,3). Returns clr (nu,)."""
+    q0 = _c(q0); alpha = _c(alpha); pts = _c(pts)
+    seg_R = _c(seg_R); seg_lo = _c(seg_lo); seg_hi = _c(seg_hi)
+    nseg = seg_R.shape[0]; nu = q0.shape[0]; npts = pts.shape[0]
+    use_plane = 1 if plane_pt is not None else 0
+    p0 = _c(plane_pt if plane_pt is not None else np.zeros(3))
+    n = _c(plane_n if plane_n is not None else np.array([0.0, 0.0, 1.0]))
+    clr = np.empty(nu, dtype=np.float64)
+    _lib.bc_assembly_clearance(_ptr(q0), _ptr(alpha), c_int(nseg), _ptr(seg_R),
+                               _ptr(seg_lo), _ptr(seg_hi), c_int(nu), _ptr(pts),
+                               c_int(npts), _ptr(p0), _ptr(n), c_int(use_plane),
+                               c_int(nscan), _ptr(clr))
+    return clr
 
 
 def dexel_carve(q0, alpha, R, Lf, orig, dir, seg0):

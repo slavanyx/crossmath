@@ -12,6 +12,7 @@ module collision_mod
   implicit none
   private
   public :: tool_clearance, capped_cyl_sdf, swept_clearance, holder_clearance
+  public :: assembly_clearance
 
 contains
 
@@ -86,6 +87,126 @@ contains
       end do
     end do
   end subroutine holder_clearance
+
+  !> SDF from a point to a stacked tool ASSEMBLY: nseg coaxial capped cylinders,
+  !> segment s spanning axial [segLo(s), segHi(s)] with radius segR(s). Models the
+  !> whole rotating stack (flute + holder + spindle nose) as one solid.
+  pure function assembly_sdf(q0, ahat, nseg, segR, segLo, segHi, p) result(sdf)
+    integer,  intent(in) :: nseg
+    real(dp), intent(in) :: q0(3), ahat(3), segR(nseg), segLo(nseg), segHi(nseg), p(3)
+    real(dp) :: sdf, w(3), lam, perp, d
+    integer  :: s
+    w = p - q0
+    lam = dot3(w, ahat)
+    perp = norm3(w - lam*ahat)
+    sdf = huge(1.0_dp)
+    do s = 1, nseg
+      d = capped_cyl_sdf(lam - segLo(s), perp, segHi(s) - segLo(s), segR(s))
+      if (d < sdf) sdf = d
+    end do
+  end function assembly_sdf
+
+  !> Signed distance from the assembly to a fixture HALF-SPACE (forbidden where
+  !> n.(x-p0) < 0; n unit). Exact for capped cylinders: the nearest point is a
+  !> cap rim in the -n direction. Negative = the stack dips into the fixture.
+  pure function assembly_plane_clr(q0, ahat, nseg, segR, segLo, segHi, p0, n) result(clr)
+    integer,  intent(in) :: nseg
+    real(dp), intent(in) :: q0(3), ahat(3), segR(nseg), segLo(nseg), segHi(nseg)
+    real(dp), intent(in) :: p0(3), n(3)
+    real(dp) :: clr, np, clo, chi, nperp
+    integer  :: s
+    np = norm3(n - dot3(n, ahat)*ahat)        ! |component of n perpendicular to axis|
+    nperp = np
+    clr = huge(1.0_dp)
+    do s = 1, nseg
+      clo = dot3(q0 + segLo(s)*ahat - p0, n) - segR(s)*nperp
+      chi = dot3(q0 + segHi(s)*ahat - p0, n) - segR(s)*nperp
+      clr = min(clr, clo, chi)
+    end do
+  end function assembly_plane_clr
+
+  !> Continuous swept-volume clearance of the full tool ASSEMBLY (flute+holder+
+  !> spindle, nseg capped-cylinder segments) over each motion segment [i,i+1],
+  !> against an obstacle cloud, PLUS a fixture half-space (n.(x-p0)>=0 allowed;
+  !> set use_plane=0 to skip). The minimum over the swept motion is found by a
+  !> coarse scan + golden-section refine, as in swept_clearance. clr(i) covers
+  !> segment [i,i+1]; clr(nu) the final static pose. <0 = collision.
+  subroutine assembly_clearance(q0, alpha, nseg, segR, segLo, segHi, nu, &
+                                pts, npts, p0, n, use_plane, nscan, clr)
+    integer,  intent(in)  :: nseg, nu, npts, use_plane, nscan
+    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), segR(nseg), segLo(nseg), segHi(nseg)
+    real(dp), intent(in)  :: pts(3,npts), p0(3), n(3)
+    real(dp), intent(out) :: clr(nu)
+    integer  :: i, j, s, ns
+    real(dp) :: ah0(3), ah1(3), tbest, fbest, t, f, tlo, thi, ahn(3)
+
+    ns = max(1, nscan)
+    do i = 1, nu - 1
+      ah0 = unit3(alpha(:,i)); ah1 = unit3(alpha(:,i+1))
+      clr(i) = huge(1.0_dp)
+      do j = 1, npts
+        tbest = 0.0_dp; fbest = huge(1.0_dp)
+        do s = 0, ns
+          t = real(s, dp) / real(ns, dp)
+          f = aseg_sdf(q0(:,i), q0(:,i+1), ah0, ah1, t, nseg, segR, segLo, segHi, pts(:,j))
+          if (f < fbest) then; fbest = f; tbest = t; end if
+        end do
+        tlo = max(0.0_dp, tbest - 1.0_dp/real(ns, dp))
+        thi = min(1.0_dp, tbest + 1.0_dp/real(ns, dp))
+        call agolden(q0(:,i), q0(:,i+1), ah0, ah1, nseg, segR, segLo, segHi, &
+                     pts(:,j), tlo, thi, f)
+        fbest = min(fbest, f)
+        if (fbest < clr(i)) clr(i) = fbest
+      end do
+      if (use_plane /= 0) then
+        clr(i) = min(clr(i), &
+          assembly_plane_clr(q0(:,i), ah0, nseg, segR, segLo, segHi, p0, n))
+      end if
+    end do
+    ! final station: static
+    ahn = unit3(alpha(:,nu))
+    clr(nu) = huge(1.0_dp)
+    do j = 1, npts
+      f = assembly_sdf(q0(:,nu), ahn, nseg, segR, segLo, segHi, pts(:,j))
+      if (f < clr(nu)) clr(nu) = f
+    end do
+    if (use_plane /= 0) clr(nu) = min(clr(nu), &
+      assembly_plane_clr(q0(:,nu), ahn, nseg, segR, segLo, segHi, p0, n))
+  end subroutine assembly_clearance
+
+  pure function aseg_sdf(qa, qb, aha, ahb, t, nseg, segR, segLo, segHi, p) result(sdf)
+    integer,  intent(in) :: nseg
+    real(dp), intent(in) :: qa(3), qb(3), aha(3), ahb(3), t
+    real(dp), intent(in) :: segR(nseg), segLo(nseg), segHi(nseg), p(3)
+    real(dp) :: sdf, q0(3), ah(3)
+    q0 = (1.0_dp - t)*qa + t*qb
+    ah = unit3((1.0_dp - t)*aha + t*ahb)
+    sdf = assembly_sdf(q0, ah, nseg, segR, segLo, segHi, p)
+  end function aseg_sdf
+
+  subroutine agolden(qa, qb, aha, ahb, nseg, segR, segLo, segHi, p, tlo, thi, fmin)
+    integer,  intent(in)  :: nseg
+    real(dp), intent(in)  :: qa(3), qb(3), aha(3), ahb(3)
+    real(dp), intent(in)  :: segR(nseg), segLo(nseg), segHi(nseg), p(3), tlo, thi
+    real(dp), intent(out) :: fmin
+    real(dp), parameter :: gr = 0.6180339887498949_dp
+    real(dp) :: a, b, c, d, fc, fd
+    integer  :: it
+    a = tlo; b = thi
+    c = b - gr*(b - a); d = a + gr*(b - a)
+    fc = aseg_sdf(qa, qb, aha, ahb, c, nseg, segR, segLo, segHi, p)
+    fd = aseg_sdf(qa, qb, aha, ahb, d, nseg, segR, segLo, segHi, p)
+    do it = 1, 30
+      if (fc < fd) then
+        b = d; d = c; fd = fc; c = b - gr*(b - a)
+        fc = aseg_sdf(qa, qb, aha, ahb, c, nseg, segR, segLo, segHi, p)
+      else
+        a = c; c = d; fc = fd; d = a + gr*(b - a)
+        fd = aseg_sdf(qa, qb, aha, ahb, d, nseg, segR, segLo, segHi, p)
+      end if
+    end do
+    fmin = min(fc, fd)
+  end subroutine agolden
 
   !> Continuous swept-volume clearance: as the tool sweeps from station i to i+1
   !> (q0 lerped, axis normalised-lerped) the minimum clearance to the obstacle

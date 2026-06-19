@@ -427,6 +427,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("path length", f"{r['path_len_mm']:.1f} mm"),
             ("feed cap", f"{r['feed_cap_mm_min']:.0f} mm/min"),
             ("min clearance", f"{r['min_clearance']:.2f} mm"),
+            ("assembly clearance", f"{r.get('assembly_clearance', float('nan')):.2f} mm"),
             ("holder clearance", f"{r.get('holder_clearance', float('nan')):.2f} mm"),
             ("collision-free", str(r["collision_free"])),
         ]

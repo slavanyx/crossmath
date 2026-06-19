@@ -34,6 +34,9 @@ class ProcessParams:
     holder_dia: float = 25.0  # mm (shank/holder diameter)
     holder_gap: float = 2.0   # mm (clearance below holder)
     holder_len: float = 40.0  # mm (modelled holder length)
+    spindle_dia: float = 60.0 # mm (spindle-nose diameter, full-machine check)
+    spindle_gap: float = 5.0  # mm (clearance below the spindle nose)
+    spindle_len: float = 80.0 # mm (modelled spindle-nose length)
     ap: float = 4.0           # axial depth of cut, mm
     E: float = 600.0e3        # Young's modulus, N/mm^2 (carbide ~600 GPa)
     dev_allow_um: float = 50.0   # allowed deflection-induced error, micron
