@@ -65,6 +65,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(filem, "Use parametric blade", self.use_parametric)
         filem.addSeparator()
         self._act(filem, "Compute double-flank channel", self.show_double_flank)
+        self._act(filem, "Process plan (stacked + roughing)", self.show_process_plan)
         filem.addSeparator()
         self._act(filem, "Export blade STL…", self.export_stl)
         self._act(filem, "Export rails CSV…", self.export_rails)
@@ -386,6 +387,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status.showMessage(
             f"double-flank channel: wall-L max {r['devL'].max()*1000:.1f}µm, "
             f"wall-R max {r['devR'].max()*1000:.1f}µm")
+
+    def show_process_plan(self):
+        """Report stacked-pass count, finishing cycle, and a roughing estimate."""
+        from ..pipeline import stacked_flank_passes, roughing_time_estimate
+        p = self.model.build_params()
+        st = stacked_flank_passes(p)
+        rg = roughing_time_estimate(p)
+        QtWidgets.QMessageBox.information(
+            self, "Process plan",
+            f"Blade height: {st['blade_height']:.1f} mm\n"
+            f"Finishing: {st['n_passes']} stacked flank pass(es)\n"
+            f"  peak deviation: {st['dev_max']*1000:.1f} µm\n"
+            f"  finishing cycle: {st['cycle_total_s']:.1f} s\n\n"
+            f"Roughing (estimate): {rg['rough_time_s']:.0f} s\n"
+            f"  channel gap: {rg['channel_gap_mm']:.1f} mm, "
+            f"MRR {rg['mrr_mm3_min']:.0f} mm³/min")
 
     def import_cad(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
