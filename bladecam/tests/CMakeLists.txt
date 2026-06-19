@@ -117,6 +117,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_end_to_end.py)
   set_tests_properties(end_to_end PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Workflow stage model: every step of the visual workflow renders finitely
+  add_test(NAME workflow
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_workflow.py)
+  set_tests_properties(workflow PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
