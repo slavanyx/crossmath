@@ -122,6 +122,18 @@ def test_topp_handles_cusp():
           f"(ratio {r2:.2f})")
 
 
+def test_topp_small_n():
+    """TOPP must not read out of bounds for short paths. The 3-point curvature
+    stencil reads q(:,3)/q(:,n-2); for n<3 that is out of bounds (UB; the Debug
+    -fcheck=all build aborts). n=1/2 are degenerate but must return finite."""
+    from bladecam import core
+    for n in (2, 3, 4):
+        q = np.column_stack([np.linspace(0, 5, n), np.linspace(0, 1, n)])
+        aprof, T = core.topp(q, np.array([1., 1.]), np.array([1., 1.]))
+        check(np.all(np.isfinite(aprof)) and np.isfinite(T),
+              f"TOPP n={n} finite (no OOB)")
+
+
 def test_chatter_matches_closed_form():
     """The single-DOF stability-lobe model must reproduce the closed-form
     asymptotic limit a_lim,min = 2 k zeta (1+zeta)/(Kt N) and the critical
@@ -167,6 +179,7 @@ def main():
                test_global_beats_naive_floor,
                test_topp_respects_limits,
                test_topp_handles_cusp,
+               test_topp_small_n,
                test_chatter_matches_closed_form,
                test_swept_penalty_finite_flute):
         print(fn.__name__)
