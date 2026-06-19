@@ -199,12 +199,20 @@ matplotlib):
 - GUI **Operations** menu: Flank finish / Double-flank / Channel roughing /
   Edge finishing / Process plan, each with a 3D view.
 
+**Phase 12 (Tier-1 close-out)**
+- **Swept-volume collision** (densified poses between stations), **selectable
+  kinematics** (table-table / head-head), **engagement-controlled trochoidal
+  roughing**, **cross-platform CI** (Linux + macOS) and a **PyInstaller** bundle.
+- **End-to-end acceptance** (`test_end_to_end`): a trimmed multi-blade *blisk
+  STEP* is taken right through extract → optimise (~1 µm/blade) → collision →
+  TOPP → G93 G-code — the closest in-repo stand-in for a real impeller part.
+
 ## Roadmap
 
-- 5-axis post-processor variants (head-head, head-table kinematics; RTCP).
-- Full machine-envelope / swept-volume verification (vs. the current
-  point-cloud collision model).
-- True trochoidal roughing engagement control (current is layered morph).
-- End-to-end validation on an industrial impeller STEP + reference-CAM compare.
+- Validation on a genuine industrial impeller STEP + reference-CAM comparison
+  (needs proprietary files / a reference system; the synthetic blisk is the
+  current stand-in).
+- Head-table (third) kinematic configuration; controller-specific post dialects.
+- Swept-volume material-removal verification (vs. the current point-cloud model).
 
 See the design notes for the governing formulas behind each phase.
