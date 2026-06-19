@@ -23,7 +23,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from .model import AppModel, PARAM_SPEC, MACHINE_SPEC, STRATEGIES
 from .worker import ComputeWorker
 from . import charts
-from .. import postproc, cadio
+from .. import postproc, cadio, workflow
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -36,6 +36,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._overlay = None      # persistent imported-CAD overlay mesh
         self._blisk = None        # list of (a,b) rails for a loaded blisk
         self._blisk_i = 0
+        self._stage_idx = None    # None = overview; else index into workflow.STAGES
 
         self.setWindowTitle("BladeCAM — 5-axis flank milling")
         self.setDockNestingEnabled(True)
@@ -102,6 +103,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._anim_timer = QtCore.QTimer()
         self._anim_timer.setInterval(60)
         self._anim_timer.timeout.connect(self._anim_step)
+
+        # --- workflow stepper: flow through the CAM stages in 3D ---
+        wf = self.addToolBar("Workflow")
+        self.insertToolBarBreak(wf)
+        wf.addWidget(QtWidgets.QLabel(" Workflow: "))
+        wf.addAction("⊞ Overview", self._show_overview)
+        wf.addAction("◀ Prev", lambda: self._step_stage(-1))
+        self.stage_lbl = QtWidgets.QLabel("  (overview)  ")
+        self.stage_lbl.setStyleSheet("font-weight: bold;")
+        wf.addWidget(self.stage_lbl)
+        wf.addAction("Next ▶", lambda: self._step_stage(+1))
 
     def _build_3d_view(self):
         self.plotter = QtInteractor(self)
@@ -179,8 +191,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_results(self, r):
         self.last = r
         self.anim_slider.setRange(0, r["q0"].shape[0] - 1)
-        self._draw_3d(r)
-        self._fill_results(r)
+        if self._stage_idx is not None:
+            self._goto_stage(self._stage_idx)   # keep the active workflow stage
+        else:
+            self._draw_3d(r)
+            self._fill_results(r)
         self._update_chart("Machinability",
                            charts.machinability_chart, r["delta"], r["dev"])
         self._update_chart("Feed", charts.feed_chart, r["seglen"], r["aprof"])
@@ -248,6 +263,82 @@ class MainWindow(QtWidgets.QMainWindow):
             self.plotter.camera_position = cam
         else:
             self.plotter.reset_camera()
+
+    # ---- workflow stepper ---------------------------------------------------
+    def _show_overview(self):
+        self._stage_idx = None
+        self.stage_lbl.setText("  (overview)  ")
+        if self.last:
+            self._draw_3d(self.last)
+            self._fill_results(self.last)
+
+    def _step_stage(self, d):
+        i = 0 if self._stage_idx is None else self._stage_idx + d
+        self._goto_stage(int(np.clip(i, 0, len(workflow.STAGES) - 1)))
+
+    def _goto_stage(self, idx):
+        if not self.last:
+            return
+        self._stage_idx = idx
+        scene = workflow.stage_scene(self.last, workflow.STAGE_KEYS[idx],
+                                     R=self.model.values["R"])
+        self.stage_lbl.setText(f"  {scene['title']}  ")
+        self._render_scene(scene)
+        self._fill_stage_metrics(scene)
+
+    def _render_scene(self, scene):
+        """Translate a renderer-agnostic workflow scene into PyVista actors."""
+        cam = self.plotter.camera_position
+        self.plotter.clear()
+        for m in scene["meshes"]:
+            t = m["type"]
+            if t == "surface":
+                surf = m["points"]; nu, nv, _ = surf.shape
+                g = pv.StructuredGrid()
+                g.points = surf.reshape(-1, 3)
+                g.dimensions = (nv, nu, 1)
+                if m.get("scalar") is not None:
+                    g["s"] = np.asarray(m["scalar"]).reshape(-1)
+                    self.plotter.add_mesh(g, scalars="s", cmap=m.get("cmap", "coolwarm"),
+                                          opacity=m.get("opacity", 1.0),
+                                          scalar_bar_args={"title": m.get("title", "")})
+                else:
+                    self.plotter.add_mesh(g, color=m.get("color", "lightgray"),
+                                          opacity=m.get("opacity", 1.0))
+            elif t == "polyline":
+                self.plotter.add_mesh(pv.lines_from_points(np.asarray(m["points"])),
+                                      color=m.get("color", "black"),
+                                      line_width=m.get("width", 2))
+            elif t == "lines":
+                for p0, p1 in m["segments"]:
+                    self.plotter.add_mesh(pv.Line(p0, p1),
+                                          color=m.get("color", "black"),
+                                          line_width=m.get("width", 2))
+            elif t == "tube":
+                pl = pv.lines_from_points(np.asarray(m["points"]))
+                pl["s"] = np.asarray(m["scalar"]).reshape(-1)
+                self.plotter.add_mesh(pl.tube(radius=m.get("radius", 1.0)),
+                                      scalars="s", cmap=m.get("cmap", "turbo"),
+                                      scalar_bar_args={"title": m.get("title", "")})
+            elif t == "points":
+                self.plotter.add_mesh(pv.PolyData(np.asarray(m["points"])),
+                                      color=m.get("color", "red"),
+                                      point_size=m.get("size", 8),
+                                      render_points_as_spheres=True)
+        if self._overlay is not None:
+            self.plotter.add_mesh(self._overlay, color="lightgray",
+                                  opacity=0.4, name="imported_cad")
+        if cam is not None:
+            self.plotter.camera_position = cam
+        else:
+            self.plotter.reset_camera()
+
+    def _fill_stage_metrics(self, scene):
+        rows = [("stage", scene["title"])] + list(scene["metrics"])
+        self.results_tbl.setRowCount(len(rows))
+        for i, (k, v) in enumerate(rows):
+            self.results_tbl.setItem(i, 0, QtWidgets.QTableWidgetItem(str(k)))
+            self.results_tbl.setItem(i, 1, QtWidgets.QTableWidgetItem(str(v)))
 
     def _show_tool_at(self, i):
         """Render the cutter as a solid cylinder at station i (named actor, so
