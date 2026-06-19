@@ -1,0 +1,272 @@
+"""Professional dockable main window for BladeCAM.
+
+Architecture:
+  - AppModel        : Qt-free state + compute (gui/model.py)
+  - ComputeWorker   : background pipeline runs (gui/worker.py)
+  - charts          : Qt-free matplotlib figures (gui/charts.py)
+  - MainWindow      : dockable shell wiring views to the model
+
+Docks (all rearrangeable / floatable / closable like real engineering tools):
+  Parameters (left) | 3D view (centre) | Results (right) | Analysis plots (bottom)
+
+Run:  PYTHONPATH=. python -m bladecam.gui.main      (or: python -m bladecam.viewer)
+"""
+from __future__ import annotations
+
+import numpy as np
+
+from PySide6 import QtCore, QtWidgets, QtGui
+from pyvistaqt import QtInteractor
+import pyvista as pv
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+
+from .model import AppModel, PARAM_SPEC, MACHINE_SPEC, STRATEGIES
+from .worker import ComputeWorker
+from . import charts
+from .. import postproc, cadio
+
+
+class MainWindow(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.model = AppModel()
+        self.pool = QtCore.QThreadPool.globalInstance()
+        self.last = None
+        self._editors = {}
+
+        self.setWindowTitle("BladeCAM — 5-axis flank milling")
+        self.setDockNestingEnabled(True)
+
+        self._build_menu()
+        self._build_toolbar()
+        self._build_3d_view()       # central
+        self._build_param_dock()    # left
+        self._build_results_dock()  # right
+        self._build_plots_dock()    # bottom
+        self.status = self.statusBar()
+
+        self._timer = QtCore.QTimer(singleShot=True)
+        self._timer.timeout.connect(lambda: self.recompute(compare=True))
+        self.recompute(compare=True)
+
+    # ---- shell --------------------------------------------------------------
+    def _build_menu(self):
+        mb = self.menuBar()
+        filem = mb.addMenu("&File")
+        self._act(filem, "Import rails CSV…", self.import_rails)
+        self._act(filem, "Import STL…", self.import_stl)
+        filem.addSeparator()
+        self._act(filem, "Export blade STL…", self.export_stl)
+        self._act(filem, "Save G-code…", self.save_gcode)
+        filem.addSeparator()
+        self._act(filem, "Quit", self.close, "Ctrl+Q")
+        self.viewm = mb.addMenu("&View")    # dock toggles added later
+        helpm = mb.addMenu("&Help")
+        self._act(helpm, "About", self.about)
+
+    def _build_toolbar(self):
+        tb = self.addToolBar("Main")
+        tb.addWidget(QtWidgets.QLabel(" Strategy: "))
+        self.strategy_cb = QtWidgets.QComboBox()
+        self.strategy_cb.addItems(STRATEGIES)
+        self.strategy_cb.currentTextChanged.connect(self._on_strategy)
+        tb.addWidget(self.strategy_cb)
+        tb.addAction("Recompute", lambda: self.recompute(compare=True))
+        tb.addAction("Save G-code", self.save_gcode)
+
+    def _build_3d_view(self):
+        self.plotter = QtInteractor(self)
+        self.setCentralWidget(self.plotter.interactor)
+
+    def _build_param_dock(self):
+        dock = QtWidgets.QDockWidget("Parameters", self)
+        scroll = QtWidgets.QScrollArea(); scroll.setWidgetResizable(True)
+        host = QtWidgets.QWidget(); vbox = QtWidgets.QVBoxLayout(host)
+
+        groups = {}
+        for spec in PARAM_SPEC + MACHINE_SPEC:
+            key, label, lo, hi, step, kind, group = spec
+            groups.setdefault(group, []).append(spec)
+        for group, specs in groups.items():
+            box = QtWidgets.QGroupBox(group); form = QtWidgets.QFormLayout(box)
+            for key, label, lo, hi, step, kind, _g in specs:
+                ed = (QtWidgets.QSpinBox() if kind == "int"
+                      else QtWidgets.QDoubleSpinBox())
+                ed.setRange(lo, hi); ed.setSingleStep(step)
+                if kind != "int":
+                    ed.setDecimals(3)
+                ed.setValue(self.model.values[key])
+                ed.valueChanged.connect(self._on_param)
+                self._editors[key] = ed
+                form.addRow(label, ed)
+            vbox.addWidget(box)
+        vbox.addStretch()
+        scroll.setWidget(host); dock.setWidget(scroll)
+        dock.setMaximumWidth(340)
+        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
+        self.viewm.addAction(dock.toggleViewAction())
+
+    def _build_results_dock(self):
+        dock = QtWidgets.QDockWidget("Results", self)
+        self.results_tbl = QtWidgets.QTableWidget(0, 2)
+        self.results_tbl.horizontalHeader().setStretchLastSection(True)
+        self.results_tbl.setHorizontalHeaderLabels(["metric", "value"])
+        self.results_tbl.verticalHeader().setVisible(False)
+        dock.setWidget(self.results_tbl); dock.setMaximumWidth(300)
+        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
+        self.viewm.addAction(dock.toggleViewAction())
+
+    def _build_plots_dock(self):
+        dock = QtWidgets.QDockWidget("Analysis", self)
+        self.tabs = QtWidgets.QTabWidget()
+        self.canvases = {}
+        for name in ("Deviation", "Machinability", "Feed"):
+            from matplotlib.figure import Figure
+            c = FigureCanvasQTAgg(Figure(figsize=(5, 3)))
+            self.canvases[name] = c
+            self.tabs.addTab(c, name)
+        dock.setWidget(self.tabs)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dock)
+        self.viewm.addAction(dock.toggleViewAction())
+
+    # ---- events -------------------------------------------------------------
+    def _on_param(self):
+        for key, ed in self._editors.items():
+            self.model.values[key] = ed.value()
+        self._timer.start(150)
+
+    def _on_strategy(self, s):
+        self.model.strategy = s
+        self._timer.start(50)
+
+    def recompute(self, compare=False):
+        self.status.showMessage("computing…")
+        w = ComputeWorker(self.model, want_compare=compare)
+        w.signals.done.connect(self._on_results)
+        w.signals.compare_done.connect(self._on_compare)
+        w.signals.failed.connect(lambda m: self.status.showMessage(m))
+        self.pool.start(w)
+
+    def _on_results(self, r):
+        self.last = r
+        self._draw_3d(r)
+        self._fill_results(r)
+        self._update_chart("Machinability",
+                           charts.machinability_chart, r["delta"], r["dev"])
+        self._update_chart("Feed", charts.feed_chart, r["seglen"], r["aprof"])
+        coll = "OK" if r["collision_free"] else "COLLISION"
+        self.status.showMessage(
+            f"cycle {r['cycle_time_s']:.2f}s   peak dev "
+            f"{r['dev'].max()*1000:.1f}µm   clearance "
+            f"{r['min_clearance']:.2f}mm  [{coll}]")
+
+    def _on_compare(self, cmp):
+        self._update_chart("Deviation", charts.deviation_chart, cmp)
+
+    # ---- drawing ------------------------------------------------------------
+    def _draw_3d(self, r):
+        surf = r["surf"]; nu, nv, _ = surf.shape
+        grid = pv.StructuredGrid()
+        grid.points = surf.reshape(-1, 3)
+        grid.dimensions = (nv, nu, 1)
+        grid["dev_um"] = r["devfield"].reshape(-1) * 1000.0
+        cam = self.plotter.camera_position
+        self.plotter.clear()
+        self.plotter.add_mesh(grid, scalars="dev_um", cmap="coolwarm",
+                              scalar_bar_args={"title": "dev (µm)"})
+        self.plotter.add_mesh(pv.lines_from_points(r["strict"]),
+                              color="lime", line_width=3)
+        q0, al = r["q0"], r["alpha"]
+        for i in range(0, nu, max(1, nu // 14)):
+            self.plotter.add_mesh(
+                pv.Line(q0[i] - al[i]*5.0, q0[i] + al[i]*30.0),
+                color="black", line_width=2)
+        if cam is not None:
+            self.plotter.camera_position = cam
+        else:
+            self.plotter.reset_camera()
+
+    def _fill_results(self, r):
+        rows = [
+            ("strategy", self.model.strategy),
+            ("peak deviation", f"{r['dev'].max()*1000:.1f} µm"),
+            ("mean deviation", f"{r['dev'].mean()*1000:.1f} µm"),
+            ("orientation jerk", f"{r['orient_jerk']:.3f}"),
+            ("cycle time", f"{r['cycle_time_s']:.2f} s"),
+            ("path length", f"{r['path_len_mm']:.1f} mm"),
+            ("feed cap", f"{r['feed_cap_mm_min']:.0f} mm/min"),
+            ("min clearance", f"{r['min_clearance']:.2f} mm"),
+            ("collision-free", str(r["collision_free"])),
+        ]
+        self.results_tbl.setRowCount(len(rows))
+        for i, (k, v) in enumerate(rows):
+            self.results_tbl.setItem(i, 0, QtWidgets.QTableWidgetItem(k))
+            self.results_tbl.setItem(i, 1, QtWidgets.QTableWidgetItem(v))
+
+    def _update_chart(self, tab, fn, *args):
+        c = self.canvases[tab]
+        c.figure.clear()
+        fn(*args, fig=c.figure)
+        c.draw_idle()
+
+    # ---- file actions -------------------------------------------------------
+    def import_rails(self):
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Import rails CSV", "", "CSV (*.csv)")
+        if fn:
+            self.model.rails = cadio.read_rails_csv(fn)
+            self.recompute(compare=True)
+
+    def import_stl(self):
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Import STL", "", "STL (*.stl)")
+        if fn and self.last is not None:
+            v, f = cadio.read_stl(fn)
+            faces = np.hstack([np.full((len(f), 1), 3), f]).ravel()
+            self.plotter.add_mesh(pv.PolyData(v, faces), color="lightgray",
+                                  opacity=0.4)
+
+    def export_stl(self):
+        if not self.last:
+            return
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export blade STL", "blade.stl", "STL (*.stl)")
+        if fn:
+            v, f = cadio.surface_to_triangles(self.last["surf"])
+            cadio.write_stl(fn, v, f)
+
+    def save_gcode(self):
+        if not self.last:
+            return
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save G-code", "bladecam.nc", "G-code (*.nc)")
+        if fn:
+            with open(fn, "w") as fh:
+                fh.write(postproc.to_gcode(self.last["machine_path"],
+                                           self.last["feed_cap_mm_min"]))
+
+    def about(self):
+        QtWidgets.QMessageBox.about(
+            self, "BladeCAM",
+            "BladeCAM — 5-axis flank-milling tool-positioning toolkit\n"
+            "Fortran numeric core + PySide6/PyVista GUI.")
+
+    def _act(self, menu, text, slot, shortcut=None):
+        a = QtGui.QAction(text, self)
+        a.triggered.connect(slot)
+        if shortcut:
+            a.setShortcut(shortcut)
+        menu.addAction(a)
+        return a
+
+
+def main():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    win = MainWindow()
+    win.resize(1480, 900)
+    win.show()
+    app.exec()
+
+
+if __name__ == "__main__":
+    main()
