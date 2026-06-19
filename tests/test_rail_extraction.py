@@ -67,12 +67,32 @@ def main():
     err = max(_dist_to_polyline(p, Ad) for p in a)
     assert err < 0.2, f"hub rail off true curve by {err:.3f} mm"
 
-    # extracted rails must drive the pipeline
+    # extracted rails must drive the pipeline AND optimise well (not just finite)
     r = compute(Params(strategy="global", rails=(a, b), nu=40))
     assert np.all(np.isfinite(r["dev"])), "pipeline on extracted rails"
+    assert r["dev"].max() < 0.1, f"extracted blade optimises poorly: {r['dev'].max()}"
+
+    # REGRESSION (audit): a planar strip must resolve deterministically -- the
+    # rails are the two long (40 mm) edges, the ruling is the 15 mm span; a
+    # floating-point tie-break must not swap them.
+    n2 = 24
+    u2 = np.linspace(0, 1, n2)
+    A2 = np.column_stack([np.linspace(0, 40, n2), 0*u2, 0*u2])
+    B2 = np.column_stack([np.linspace(0, 40, n2), 0*u2, 15 + 0*u2])
+    with tempfile.TemporaryDirectory() as d:
+        fstep = os.path.join(d, "flat.step")
+        s2 = GeomFill_BSplineCurves(_bspline(A2), _bspline(B2),
+                                    GeomFill_CoonsStyle).Surface()
+        w2 = STEPControl_Writer(); w2.Transfer(BRepBuilderAPI_MakeFace(s2, 1e-6).Face(),
+                                               STEPControl_AsIs); w2.Write(fstep)
+        fa, fb = cadio.rails_from_cad(fstep, nu=20)
+    rail_span = np.linalg.norm(fa[-1] - fa[0])
+    ruling_span = np.linalg.norm(fb[0] - fa[0])
+    assert abs(rail_span - 40.0) < 1.0, f"planar rail span {rail_span:.1f} (want 40)"
+    assert abs(ruling_span - 15.0) < 1.0, f"planar ruling span {ruling_span:.1f} (want 15)"
 
     print(f"rail extraction OK (max rail error {err*1000:.1f} um, "
-          f"global dev {r['dev'].max()*1000:.1f} um)")
+          f"global dev {r['dev'].max()*1000:.1f} um, planar case deterministic)")
 
 
 if __name__ == "__main__":
