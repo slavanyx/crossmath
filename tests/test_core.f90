@@ -3,6 +3,7 @@ program test_core
   use vec3_mod
   use ruled_mod
   use flank_mod
+  use flank_opt_mod
   implicit none
 
   integer :: nfail
@@ -12,6 +13,7 @@ program test_core
   call test_two_point_developable(nfail)
   call test_distribution_cylinder(nfail)
   call test_distribution_twisted(nfail)
+  call test_refine_improves(nfail)
 
   if (nfail == 0) then
     print *, "ALL TESTS PASSED"
@@ -101,5 +103,24 @@ contains
     call check(abs(dval) < 1.0e6_dp .and. abs(dval) > 1.0e-6_dp, &
                "twisted: finite nonzero delta", nfail)
   end subroutine test_distribution_twisted
+
+  !> Min-max refinement must not be worse than the two-point seed, and on a
+  !> warped ruling it should strictly reduce the peak deviation.
+  subroutine test_refine_improves(nfail)
+    integer, intent(inout) :: nfail
+    real(dp) :: a_pt(3), ap(3), b_pt(3), bp(3), R
+    real(dp) :: q0(3), alpha(3), e_two, e_ref
+    R = 5.0_dp
+    ! a twisted ruling: hub tangent and shroud tangent point differently
+    a_pt = [0.0_dp, 0.0_dp, 0.0_dp]
+    b_pt = [2.0_dp, 0.0_dp, 12.0_dp]
+    ap   = [1.0_dp, 0.0_dp, 0.0_dp]
+    bp   = [0.7_dp, 0.7_dp, 0.0_dp]     ! rotated tangent -> non-developable
+    call two_point(a_pt, ap, b_pt, bp, R, q0, alpha)
+    e_two = max_dev_ruling(a_pt, b_pt, q0, alpha, R, 41)
+    call refine_minmax(a_pt, ap, b_pt, bp, R, 41, q0, alpha, e_ref)
+    call check(e_ref <= e_two + 1.0e-9_dp, "refine: not worse than two-point", nfail)
+    call check(e_ref < 0.99_dp * e_two, "refine: strictly improves warped ruling", nfail)
+  end subroutine test_refine_improves
 
 end program test_core
