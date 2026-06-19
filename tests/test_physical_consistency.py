@@ -75,6 +75,36 @@ def main():
     # an under-powered spindle on a heavy slot is flagged infeasible
     check(not ProcessParams(ap=20, ae=12, spindle_power_kW=2.0).feed_feasible(),
           "heavy cut on a 2 kW spindle is infeasible")
+    # DIFFERENTIAL: reproduce F_peak/F_mean from the documented force model with
+    # independent sampling -- kills any engagement-arc / coefficient drift.
+    import math
+    def forces_ref(pp, fz, ae):
+        R = pp.tool_dia/2; ae = max(1e-6, min(ae, 2*R))
+        phi_ex = math.acos(max(-1, min(1, 1 - ae/R)))
+        Ktc, Krc, N = pp.Kt, pp.Kr*pp.Kt, pp.n_teeth
+        th = np.linspace(0, 2*math.pi/N, 400, endpoint=False)
+        Sx = np.zeros_like(th); Sy = np.zeros_like(th)
+        for k in range(N):
+            phi = np.mod(th + k*2*math.pi/N, 2*math.pi); eng = phi <= phi_ex
+            s = np.sin(phi)
+            Ft = pp.ap*(Ktc*fz*s + pp.Kte)*eng; Fr = pp.ap*(Krc*fz*s + pp.Kre)*eng
+            Sx += -Ft*np.cos(phi) - Fr*np.sin(phi); Sy += Ft*np.sin(phi) - Fr*np.cos(phi)
+        F = np.hypot(Sx, Sy); return F.max(), F.mean()
+    fp, fm = forces_ref(p, 0.07, p._ae())
+    g = p.cutting_forces(0.07)
+    check(abs(g["F_peak"] - fp) < 0.5 and abs(g["F_mean"] - fm) < 0.5,
+          "force model matches independent engagement-arc integral",
+          f"(peak {g['F_peak']:.1f} vs {fp:.1f})")
+    # wider radial engagement raises the mean force (ties force to phi_ex)
+    check(p.cutting_forces(0.05, ae=2*p.tool_dia/2)["F_mean"]
+          > p.cutting_forces(0.05, ae=0.2*p.tool_dia/2)["F_mean"],
+          "wider radial engagement raises mean force")
+    # deflection constraint binds: a tight deflection budget lowers the feed cap
+    loose = ProcessParams(dev_allow_um=500).mechanistic_feed_cap_mm_min()
+    tight = ProcessParams(dev_allow_um=2).mechanistic_feed_cap_mm_min()
+    check(tight < loose, "tighter deflection budget lowers the feed cap",
+          f"({tight:.0f} < {loose:.0f})")
+
     # pipeline surfaces the forces, finite and positive
     r = compute(Params(strategy="global"))
     check(r["cut_force_peak_N"] > 0 and r["cut_power_W"] > 0 and r["feed_feasible"],
