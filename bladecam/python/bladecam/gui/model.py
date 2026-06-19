@@ -77,3 +77,13 @@ class AppModel:
         for s in STRATEGIES:
             out[s] = compute(self.build_params(strategy=s))["dev"]
         return out
+
+    def compute_compare_full(self) -> dict:
+        """Scalar metrics per strategy: peak deviation (µm), jerk, cycle (s)."""
+        out = {}
+        for s in STRATEGIES:
+            r = compute(self.build_params(strategy=s))
+            out[s] = dict(dev_um=float(r["dev"].max() * 1000.0),
+                          jerk=float(r["orient_jerk"]),
+                          cycle_s=float(r["cycle_time_s"]))
+        return out

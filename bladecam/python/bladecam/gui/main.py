@@ -73,6 +73,16 @@ class MainWindow(QtWidgets.QMainWindow):
         tb.addWidget(self.strategy_cb)
         tb.addAction("Recompute", lambda: self.recompute(compare=True))
         tb.addAction("Save G-code", self.save_gcode)
+        tb.addSeparator()
+        # toolpath animation controls
+        self.play_act = tb.addAction("▶ Play", self._toggle_play)
+        self.anim_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.anim_slider.setRange(0, 1)
+        self.anim_slider.valueChanged.connect(self._show_tool_at)
+        tb.addWidget(self.anim_slider)
+        self._anim_timer = QtCore.QTimer()
+        self._anim_timer.setInterval(60)
+        self._anim_timer.timeout.connect(self._anim_step)
 
     def _build_3d_view(self):
         self.plotter = QtInteractor(self)
@@ -120,7 +130,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dock = QtWidgets.QDockWidget("Analysis", self)
         self.tabs = QtWidgets.QTabWidget()
         self.canvases = {}
-        for name in ("Deviation", "Machinability", "Feed"):
+        for name in ("Deviation", "Machinability", "Feed", "Compare"):
             from matplotlib.figure import Figure
             c = FigureCanvasQTAgg(Figure(figsize=(5, 3)))
             self.canvases[name] = c
@@ -149,6 +159,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_results(self, r):
         self.last = r
+        self.anim_slider.setRange(0, r["q0"].shape[0] - 1)
         self._draw_3d(r)
         self._fill_results(r)
         self._update_chart("Machinability",
@@ -162,6 +173,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_compare(self, cmp):
         self._update_chart("Deviation", charts.deviation_chart, cmp)
+        # full scalar comparison (runs all strategies once more, off-thread)
+        try:
+            stats = self.model.compute_compare_full()
+            self._update_chart("Compare", charts.compare_chart, stats)
+        except Exception:
+            pass
 
     # ---- drawing ------------------------------------------------------------
     def _draw_3d(self, r):
@@ -181,10 +198,41 @@ class MainWindow(QtWidgets.QMainWindow):
             self.plotter.add_mesh(
                 pv.Line(q0[i] - al[i]*5.0, q0[i] + al[i]*30.0),
                 color="black", line_width=2)
+        self._show_tool_at(self.anim_slider.value())
         if cam is not None:
             self.plotter.camera_position = cam
         else:
             self.plotter.reset_camera()
+
+    def _show_tool_at(self, i):
+        """Render the cutter as a solid cylinder at station i (named actor, so
+        it is replaced rather than accumulated)."""
+        if not self.last:
+            return
+        r = self.last
+        i = int(np.clip(i, 0, r["q0"].shape[0] - 1))
+        q0, al = r["q0"][i], r["alpha"][i]
+        R = self.model.values["R"]
+        h = 30.0
+        cyl = pv.Cylinder(center=q0 + al * h * 0.5, direction=al,
+                          radius=R, height=h, resolution=40)
+        self.plotter.add_mesh(cyl, color="#d4af37", opacity=0.55, name="tool")
+        contact = r["contact"][i]
+        self.plotter.add_mesh(pv.Sphere(radius=R*0.18, center=contact),
+                              color="red", name="contact")
+        self.plotter.render()
+
+    def _toggle_play(self):
+        if self._anim_timer.isActive():
+            self._anim_timer.stop(); self.play_act.setText("▶ Play")
+        else:
+            self._anim_timer.start(); self.play_act.setText("⏸ Pause")
+
+    def _anim_step(self):
+        v = self.anim_slider.value() + 1
+        if v > self.anim_slider.maximum():
+            v = 0
+        self.anim_slider.setValue(v)
 
     def _fill_results(self, r):
         rows = [
@@ -260,8 +308,26 @@ class MainWindow(QtWidgets.QMainWindow):
         return a
 
 
+def apply_dark_theme(app):
+    """Apply a professional dark Fusion palette."""
+    app.setStyle("Fusion")
+    pal = QtGui.QPalette()
+    c = QtGui.QColor
+    pal.setColor(QtGui.QPalette.Window, c(43, 43, 43))
+    pal.setColor(QtGui.QPalette.WindowText, c(220, 220, 220))
+    pal.setColor(QtGui.QPalette.Base, c(30, 30, 30))
+    pal.setColor(QtGui.QPalette.AlternateBase, c(45, 45, 45))
+    pal.setColor(QtGui.QPalette.Text, c(220, 220, 220))
+    pal.setColor(QtGui.QPalette.Button, c(53, 53, 53))
+    pal.setColor(QtGui.QPalette.ButtonText, c(220, 220, 220))
+    pal.setColor(QtGui.QPalette.Highlight, c(38, 110, 183))
+    pal.setColor(QtGui.QPalette.HighlightedText, c(255, 255, 255))
+    app.setPalette(pal)
+
+
 def main():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    apply_dark_theme(app)
     win = MainWindow()
     win.resize(1480, 900)
     win.show()
