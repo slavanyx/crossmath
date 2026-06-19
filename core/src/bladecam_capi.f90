@@ -15,6 +15,7 @@ module bladecam_capi
   use topp_mod, only: topp_ra
   use chatter_mod, only: stability_lobes, stability_lobes_frf
   use collision_mod, only: tool_clearance, swept_clearance, holder_clearance
+  use dexel_mod, only: dexel_carve
   implicit none
 
 contains
@@ -194,5 +195,17 @@ contains
     real(c_double), intent(out) :: clr(nu)
     call holder_clearance(q0, alpha, Rh, base, Lh, nu, pts, npts, clr)
   end subroutine bc_holder_clearance
+
+  !> Dexel material-removal carve: removed length and first-cut t per ray.
+  subroutine bc_dexel_carve(q0, alpha, R, Lf, nu, orig, dir, seg0, nray, &
+                            removed, first_cut) bind(C, name="bc_dexel_carve")
+    integer(c_int), value :: nu, nray
+    real(c_double), intent(in)  :: q0(3,nu), alpha(3,nu), Lf(nu)
+    real(c_double), intent(in)  :: orig(3,nray), dir(3,nray), seg0(nray)
+    real(c_double), value       :: R
+    real(c_double), intent(out) :: removed(nray), first_cut(nray)
+    call dexel_carve(q0, alpha, R, Lf, nu, orig, dir, seg0, nray, &
+                     removed, first_cut)
+  end subroutine bc_dexel_carve
 
 end module bladecam_capi
