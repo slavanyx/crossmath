@@ -9,8 +9,10 @@ from __future__ import annotations
 from dataclasses import asdict
 import numpy as np
 
+from dataclasses import replace
 from ..pipeline import Params, compute
 from ..process import MachineLimits, ProcessParams
+from .. import machine as machine_lib
 
 
 # Strategy registry -- extend by adding the key here and in optimize.optimize_blade
@@ -59,6 +61,14 @@ class AppModel:
         self.values["dev_allow"] = ProcessParams().dev_allow_um
         self.rails = None  # optional external (a, b)
         self.frf = None    # optional measured FRF (freq, reG, imG)
+        # selected machine profile (a Machine; editable via the config editor)
+        self.machine_name = "Generic 5-axis trunnion"
+        self.machine = replace(machine_lib.get_machine(self.machine_name))
+
+    def select_machine(self, name):
+        """Switch to a default machine profile (resets any edits)."""
+        self.machine_name = name
+        self.machine = replace(machine_lib.get_machine(name))
 
     def build_params(self, strategy=None) -> Params:
         v = self.values
@@ -71,7 +81,9 @@ class AppModel:
             mu=v["mu"], gamma=v["gamma"], nsweeps=int(v["nsweeps"]),
             barrel_R=v["barrel_R"], barrel_pos=v["barrel_pos"],
             swept_weight=v["swept_weight"],
-            machine=MachineLimits(v_rot=v["v_rot"], kind=int(v["kind"])),
+            # the selected machine profile drives reachability + limits; the
+            # v_rot/kind editors fine-tune the active profile
+            machine=replace(self.machine, v_rot=v["v_rot"], kind=int(v["kind"])),
             process=ProcessParams(feed_max_mm_min=v["feed_max"],
                                   dev_allow_um=v["dev_allow"]),
             rails=self.rails,

@@ -24,6 +24,15 @@ from .model import AppModel, PARAM_SPEC, MACHINE_SPEC, STRATEGIES
 from .worker import ComputeWorker
 from . import charts
 from .. import postproc, cadio, workflow
+from .. import machine as machine_lib
+
+
+def _reach_str(r):
+    """Format machine reachability for the results panel."""
+    if r.get("reachable", True):
+        return "yes"
+    v = r.get("axis_violations", {})
+    return "NO — " + ", ".join(f"{ax} by {e:.0f}" for ax, e in v.items())
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -94,6 +103,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.strategy_cb.addItems(STRATEGIES)
         self.strategy_cb.currentTextChanged.connect(self._on_strategy)
         tb.addWidget(self.strategy_cb)
+        tb.addWidget(QtWidgets.QLabel(" Machine: "))
+        self.machine_cb = QtWidgets.QComboBox()
+        self.machine_cb.addItems(list(machine_lib.DEFAULT_MACHINES.keys()))
+        self.machine_cb.setCurrentText(self.model.machine_name)
+        self.machine_cb.currentTextChanged.connect(self._on_machine)
+        tb.addWidget(self.machine_cb)
+        tb.addAction("Machine config…", self.edit_machine)
         tb.addAction("Recompute", lambda: self.recompute(compare=True))
         tb.addAction("Save G-code", self.save_gcode)
         tb.addSeparator()
@@ -189,6 +205,51 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_strategy(self, s):
         self.model.strategy = s
         self._timer.start(50)
+
+    def _on_machine(self, name):
+        self.model.select_machine(name)
+        self._timer.start(50)
+
+    def edit_machine(self):
+        """Machine configuration editor: edit the active profile's travel/rotary
+        envelope, kinematic limits and spindle/table geometry, then recompute."""
+        from dataclasses import fields, replace
+        m = self.model.machine
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(f"Machine config — {m.name}")
+        form = QtWidgets.QFormLayout(dlg)
+        editors = {}
+        # numeric scalar fields
+        scal = ["v_lin", "a_lin", "v_rot", "a_rot",
+                "spindle_dia", "spindle_len", "table_radius"]
+        for fn in scal:
+            ed = QtWidgets.QDoubleSpinBox()
+            ed.setRange(0.0, 1e6); ed.setDecimals(3)
+            ed.setValue(float(getattr(m, fn)))
+            editors[fn] = ed; form.addRow(fn, ed)
+        # range fields (min,max) as two spinboxes
+        rng = ["x_range", "y_range", "z_range", "a_range", "c_range"]
+        for fn in rng:
+            lo, hi = getattr(m, fn)
+            elo = QtWidgets.QDoubleSpinBox(); ehi = QtWidgets.QDoubleSpinBox()
+            for e, val in ((elo, lo), (ehi, hi)):
+                e.setRange(-1e6, 1e6); e.setDecimals(4); e.setValue(float(val))
+            row = QtWidgets.QWidget(); h = QtWidgets.QHBoxLayout(row)
+            h.setContentsMargins(0, 0, 0, 0); h.addWidget(elo); h.addWidget(ehi)
+            editors[fn] = (elo, ehi); form.addRow(fn, row)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
+                                        QtWidgets.QDialogButtonBox.Cancel)
+        bb.accepted.connect(dlg.accept); bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        upd = {}
+        for fn in scal:
+            upd[fn] = editors[fn].value()
+        for fn in rng:
+            upd[fn] = (editors[fn][0].value(), editors[fn][1].value())
+        self.model.machine = replace(m, **upd)
+        self.recompute(compare=True)
 
     def recompute(self, compare=False):
         self.status.showMessage("computing…")
@@ -481,6 +542,8 @@ class MainWindow(QtWidgets.QMainWindow):
             ("assembly clearance", f"{r.get('assembly_clearance', float('nan')):.2f} mm"),
             ("holder clearance", f"{r.get('holder_clearance', float('nan')):.2f} mm"),
             ("collision-free", str(r["collision_free"])),
+            ("machine", r.get("machine_name", "—")),
+            ("reachable", _reach_str(r)),
         ]
         self.results_tbl.setRowCount(len(rows))
         for i, (k, v) in enumerate(rows):

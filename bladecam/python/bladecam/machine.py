@@ -1,0 +1,84 @@
+"""Machine profiles: kinematic limits, travel/rotary envelopes and structural
+geometry for full-machine verification, plus a library of default machines.
+
+A Machine is a drop-in for the older MachineLimits (same kind / vmax() / amax()
+used by TOPP) but adds the axis-travel and rotary ranges needed to answer "will
+this toolpath actually run on THIS machine?" (reachability) and the structural
+envelope (spindle housing, table) for full-machine collision.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import math
+
+import numpy as np
+
+
+@dataclass
+class Machine:
+    name: str = "Generic 5-axis trunnion"
+    kind: int = 0                      # 0 = table-table (A-C), 1 = head-head
+    # linear travel ranges (mm) and rotary ranges (rad)
+    x_range: tuple = (-400.0, 400.0)
+    y_range: tuple = (-400.0, 400.0)
+    z_range: tuple = (-350.0, 350.0)
+    a_range: tuple = (math.radians(-120.0), math.radians(120.0))
+    c_range: tuple = (math.radians(-360.0), math.radians(360.0))
+    # kinematic limits for the time-optimal feed (linear mm/s, rotary rad/s)
+    v_lin: float = 50.0
+    a_lin: float = 800.0
+    v_rot: float = 0.6
+    a_rot: float = 6.0
+    # structural envelope (for full-machine collision)
+    spindle_dia: float = 60.0          # mm, spindle-nose / housing diameter
+    spindle_len: float = 120.0         # mm, modelled housing length
+    table_radius: float = 300.0        # mm, trunnion table the part sits on
+
+    # --- drop-in for MachineLimits (TOPP) ---
+    def vmax(self):
+        return [self.v_lin, self.v_lin, self.v_lin, self.v_rot, self.v_rot]
+
+    def amax(self):
+        return [self.a_lin, self.a_lin, self.a_lin, self.a_rot, self.a_rot]
+
+
+def reachability(m: "Machine", machine_path: np.ndarray, tol: float = 1e-6):
+    """Check an IK machine path (n,5)=[X,Y,Z,A,C] against the machine envelope.
+
+    Returns dict axis -> excess (how far outside its limit, mm or rad); empty
+    means the whole toolpath is reachable on this machine."""
+    p = np.asarray(machine_path, float)
+    ranges = {"X": m.x_range, "Y": m.y_range, "Z": m.z_range,
+              "A": m.a_range, "C": m.c_range}
+    viol = {}
+    for j, ax in enumerate(("X", "Y", "Z", "A", "C")):
+        lo, hi = ranges[ax]
+        col = p[:, j]
+        excess = max(0.0, lo - float(col.min()), float(col.max()) - hi)
+        if excess > tol:
+            viol[ax] = excess
+    return viol
+
+
+# --- default machine library (select / edit in the GUI) ---
+DEFAULT_MACHINES = {
+    "Generic 5-axis trunnion": Machine(),
+    "Compact blisk cell": Machine(
+        name="Compact blisk cell", kind=0,
+        x_range=(-150.0, 150.0), y_range=(-150.0, 150.0), z_range=(-200.0, 120.0),
+        a_range=(math.radians(-30.0), math.radians(120.0)),
+        c_range=(math.radians(-360.0), math.radians(360.0)),
+        v_lin=80.0, a_lin=1500.0, v_rot=1.2, a_rot=20.0,
+        spindle_dia=45.0, spindle_len=90.0, table_radius=120.0),
+    "Large gantry 5-axis": Machine(
+        name="Large gantry 5-axis", kind=1,
+        x_range=(-1500.0, 1500.0), y_range=(-1000.0, 1000.0), z_range=(-800.0, 200.0),
+        a_range=(math.radians(-110.0), math.radians(110.0)),
+        c_range=(math.radians(-360.0), math.radians(360.0)),
+        v_lin=40.0, a_lin=500.0, v_rot=0.4, a_rot=4.0,
+        spindle_dia=90.0, spindle_len=180.0, table_radius=800.0),
+}
+
+
+def get_machine(name: str) -> "Machine":
+    return DEFAULT_MACHINES.get(name, Machine())

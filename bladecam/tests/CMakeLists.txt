@@ -141,6 +141,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_pipeline_fuzz.py)
   set_tests_properties(pipeline_fuzz PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Machine profiles + reachability (travel/rotary envelope check)
+  add_test(NAME machine
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_machine.py)
+  set_tests_properties(machine PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
