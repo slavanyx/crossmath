@@ -1,0 +1,105 @@
+!> Unit tests for the BladeCAM numeric core. Nonzero exit code on failure.
+program test_core
+  use vec3_mod
+  use ruled_mod
+  use flank_mod
+  implicit none
+
+  integer :: nfail
+  nfail = 0
+
+  call test_deviation_basic(nfail)
+  call test_two_point_developable(nfail)
+  call test_distribution_cylinder(nfail)
+  call test_distribution_twisted(nfail)
+
+  if (nfail == 0) then
+    print *, "ALL TESTS PASSED"
+  else
+    print *, "FAILED TESTS:", nfail
+    error stop 1
+  end if
+
+contains
+
+  subroutine check(cond, name, nfail)
+    logical, intent(in) :: cond
+    character(*), intent(in) :: name
+    integer, intent(inout) :: nfail
+    if (cond) then
+      print *, "  ok   ", name
+    else
+      print *, "  FAIL ", name
+      nfail = nfail + 1
+    end if
+  end subroutine check
+
+  !> deviation = dist(point,axis) - R, axis = z through origin, R = 1
+  subroutine test_deviation_basic(nfail)
+    integer, intent(inout) :: nfail
+    real(dp) :: q0(3), alpha(3), g(3), pts(3, 3)
+    q0 = [0.0_dp, 0.0_dp, 0.0_dp]
+    alpha = [0.0_dp, 0.0_dp, 1.0_dp]
+    pts(:, 1) = [1.0_dp, 0.0_dp, 5.0_dp]   ! on cylinder -> g = 0
+    pts(:, 2) = [2.0_dp, 0.0_dp, 0.0_dp]   ! outside     -> g = 1
+    pts(:, 3) = [0.0_dp, 0.5_dp, 3.0_dp]   ! inside      -> g = -0.5
+    call deviation(q0, alpha, 1.0_dp, pts, 3, g)
+    call check(abs(g(1)) < 1.0e-12_dp, "deviation on-surface = 0", nfail)
+    call check(abs(g(2) - 1.0_dp) < 1.0e-12_dp, "deviation outside = +1", nfail)
+    call check(abs(g(3) + 0.5_dp) < 1.0e-12_dp, "deviation inside = -0.5", nfail)
+  end subroutine test_deviation_basic
+
+  !> Flat (developable) ruled strip: tool axis should be ~parallel to the
+  !> ruling and the whole ruling should be machined within tolerance.
+  subroutine test_two_point_developable(nfail)
+    integer, intent(inout) :: nfail
+    real(dp) :: a_pt(3), ap(3), b_pt(3), bp(3), q0(3), alpha(3), emax, R
+    R = 2.0_dp
+    a_pt = [0.0_dp, 0.0_dp, 0.0_dp]
+    b_pt = [0.0_dp, 0.0_dp, 10.0_dp]   ! ruling along +z
+    ap   = [1.0_dp, 0.0_dp, 0.0_dp]    ! rails advance along +x (planar strip)
+    bp   = [1.0_dp, 0.0_dp, 0.0_dp]
+    call two_point(a_pt, ap, b_pt, bp, R, q0, alpha)
+    emax = max_dev_ruling(a_pt, b_pt, q0, alpha, R, 21)
+    call check(abs(abs(alpha(3)) - 1.0_dp) < 1.0e-9_dp, &
+               "developable: axis parallel to ruling", nfail)
+    call check(emax < 1.0e-9_dp, "developable: zero flank error", nfail)
+  end subroutine test_two_point_developable
+
+  !> A right circular cylinder is developable: e is constant so e'=0 and
+  !> distribution() must flag delta as huge (non-twisting).
+  subroutine test_distribution_cylinder(nfail)
+    integer, intent(inout) :: nfail
+    integer, parameter :: nu = 21
+    real(dp) :: a(3, nu), b(3, nu), delta(nu), vstar(nu), strict(3, nu)
+    integer :: i
+    real(dp) :: t
+    do i = 1, nu
+      t = real(i - 1, dp) / real(nu - 1, dp) * 6.2831853_dp
+      a(:, i) = [cos(t), sin(t), 0.0_dp]   ! base circle
+      b(:, i) = [cos(t), sin(t), 1.0_dp]   ! same circle, lifted -> const director
+    end do
+    call distribution(a, b, nu, delta, vstar, strict)
+    call check(delta(nu/2) > 1.0e6_dp, "cylinder: delta flagged huge", nfail)
+  end subroutine test_distribution_cylinder
+
+  !> A twisted (non-developable) ruled surface must yield finite, nonzero
+  !> distribution parameter -> the core actually detects warp.
+  subroutine test_distribution_twisted(nfail)
+    integer, intent(inout) :: nfail
+    integer, parameter :: nu = 41
+    real(dp) :: a(3, nu), b(3, nu), delta(nu), vstar(nu), strict(3, nu)
+    integer :: i
+    real(dp) :: t, dval
+    do i = 1, nu
+      t = real(i - 1, dp) / real(nu - 1, dp)
+      a(:, i) = [t, 0.0_dp, 0.0_dp]                 ! straight hub rail on x-axis
+      b(:, i) = [t, cos(t), sin(t)]                 ! shroud rail rotates -> warp
+    end do
+    call distribution(a, b, nu, delta, vstar, strict)
+    dval = delta(nu/2)
+    call check(abs(dval) < 1.0e6_dp .and. abs(dval) > 1.0e-6_dp, &
+               "twisted: finite nonzero delta", nfail)
+  end subroutine test_distribution_twisted
+
+end program test_core
