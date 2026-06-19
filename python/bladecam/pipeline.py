@@ -236,6 +236,10 @@ def compute(p: Params) -> dict:
     # colour the surface by the REAL envelope error rather than the per-station
     # residual (which is ~0 for a cylinder on an exact ruled surface)
     swept_field = swept.reshape(surf.shape[0], surf.shape[1])
+    # true swept-envelope SURFACE: the actual machined geometry (design grid
+    # projected onto the nearest swept cutter), renderable as a (nu,nv,3) mesh
+    envelope_surf = core.swept_surface(q0, alpha, Lflute, p.R,
+                                       surf.reshape(-1, 3)).reshape(surf.shape)
 
     # --- Phase 4: time-optimal feed ---
     # contact-path arc length as an extra DOF carrying the process feed cap
@@ -258,7 +262,7 @@ def compute(p: Params) -> dict:
         min_clearance=min_clear, collision_free=collision_free,
         holder_clearance=holder_min,
         gouge_max=gouge_max, swept_overcut=swept_overcut, clearance=clr,
-        swept_field=swept_field,
+        swept_field=swept_field, envelope_surf=envelope_surf,
         orient_jerk=optimize.orientation_jerk(alpha),
         contact=contact, seglen=seglen, move_times_s=move_times,
         feed_cap_mm_min=feed_cap,

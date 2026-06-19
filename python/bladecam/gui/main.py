@@ -79,6 +79,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(opm, "Channel roughing — trochoidal", self.show_trochoidal)
         self._act(opm, "Edge finishing (point-mill)", self.show_edge_finish)
         opm.addSeparator()
+        self._act(opm, "Machined envelope (swept surface)", self.show_envelope)
         self._act(opm, "Minimize swept overcut", self.minimize_swept_overcut)
         self._act(opm, "Process plan (full report)", self.show_process_plan)
         self.viewm = mb.addMenu("&View")    # dock toggles added later
@@ -527,6 +528,49 @@ class MainWindow(QtWidgets.QMainWindow):
         self._overlay = None
         self._blisk = None
         self.recompute(compare=True)
+
+    def show_envelope(self):
+        """Render the TRUE swept-envelope surface -- the actual machined geometry
+        (design grid projected onto the nearest swept cutter) -- coloured by the
+        signed swept error, beside a faint reference of the design surface. The
+        deviation from design is exaggerated (adaptively, so the worst error maps
+        to ~10% of the blade height) so sub-millimetre overcut/leftover is
+        visible without grossly distorting large errors."""
+        if not self.last or "envelope_surf" not in self.last:
+            return
+        self._stage_idx = None
+        r = self.last
+        design = r["surf"]; env = r["envelope_surf"]
+        disp = np.linalg.norm((env - design).reshape(-1, 3), axis=1)
+        dmax = float(disp.max())
+        height = float(np.linalg.norm(r["b"] - r["a"], axis=1).mean())
+        exag_f = 1.0 if dmax < 1e-9 else float(np.clip(0.1 * height / dmax, 1.0, 50.0))
+        exag = design + exag_f * (env - design)
+        sf = r.get("swept_field")
+        cam = self.plotter.camera_position
+        self.plotter.clear()
+        # faint design reference
+        gd = pv.StructuredGrid()
+        gd.points = design.reshape(-1, 3)
+        gd.dimensions = (design.shape[1], design.shape[0], 1)
+        self.plotter.add_mesh(gd, color="lightgray", opacity=0.25, name="design_ref")
+        # machined envelope, coloured by signed swept error (um)
+        ge = pv.StructuredGrid()
+        ge.points = exag.reshape(-1, 3)
+        ge.dimensions = (env.shape[1], env.shape[0], 1)
+        if sf is not None:
+            ge["err_um"] = (sf * 1000.0).reshape(-1)
+            self.plotter.add_mesh(ge, scalars="err_um", cmap="coolwarm",
+                                  scalar_bar_args={"title": "swept err (µm)"})
+        else:
+            self.plotter.add_mesh(ge, color="#c0a020")
+        self.status.showMessage(
+            f"machined swept envelope (displacement x{exag_f:.0f}); "
+            f"overcut {r.get('swept_overcut', 0.0)*1000:.0f} µm")
+        if cam is not None:
+            self.plotter.camera_position = cam
+        else:
+            self.plotter.reset_camera()
 
     def minimize_swept_overcut(self):
         """Close the loop on the audit finding: per-ruling deviation is ~0 for a

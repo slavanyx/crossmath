@@ -4,6 +4,7 @@ module flank_mod
   implicit none
   private
   public :: two_point, deviation, deviation_cone, max_dev_ruling, swept_deviation
+  public :: swept_surface
 
 contains
 
@@ -106,6 +107,44 @@ contains
       end do
     end do
   end subroutine swept_deviation
+
+  !> True swept-envelope SURFACE: the actual machined geometry. For each design
+  !> point, find the closest finite-flute cutter over the whole path and project
+  !> the point radially onto that cylinder's surface -- i.e. the boundary of the
+  !> swept tool volume in the radial direction. Overcut points move inward
+  !> (gouge), undercut points move outward (leftover stock). Returns the machined
+  !> point mpts(3,npts) for a design-point cloud pts(3,npts).
+  subroutine swept_surface(q0, alpha, Lflute, R, nu, pts, npts, mpts)
+    integer,  intent(in)  :: nu, npts
+    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), R, pts(3,npts)
+    real(dp), intent(out) :: mpts(3,npts)
+    integer  :: p, i, ibest
+    real(dp) :: ahat(3,nu), w(3), lam, d, dbest, axpt(3), rad(3), rn, lbest
+    do i = 1, nu
+      ahat(:,i) = unit3(alpha(:,i))
+    end do
+    do p = 1, npts
+      ! the swept-volume boundary follows the cylinder that cuts deepest here:
+      ! the minimum SIGNED distance (consistent with swept_deviation).
+      dbest = huge(1.0_dp); ibest = 1; lbest = 0.0_dp
+      do i = 1, nu
+        w = pts(:,p) - q0(:,i)
+        lam = dot3(w, ahat(:,i))
+        lam = max(0.0_dp, min(Lflute(i), lam))
+        d = norm3(w - lam*ahat(:,i)) - R
+        if (d < dbest) then; dbest = d; ibest = i; lbest = lam; end if
+      end do
+      ! project the point onto the chosen cylinder surface, radially
+      axpt = q0(:,ibest) + lbest*ahat(:,ibest)
+      rad  = pts(:,p) - axpt
+      rn   = norm3(rad)
+      if (rn > 1.0e-12_dp) then
+        mpts(:,p) = axpt + R * (rad / rn)
+      else
+        mpts(:,p) = pts(:,p)
+      end if
+    end do
+  end subroutine swept_surface
 
   !> Convenience: max |g| along a single ruling sampled at nv stations,
   !> for a given cutter axis. Returns the peak absolute deviation.
