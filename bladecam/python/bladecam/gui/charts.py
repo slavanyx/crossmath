@@ -100,8 +100,11 @@ def chatter_chart(rpm, alim, nlobes, nptsper, feed_rpm=None, fig=None):
     ax.set_xlabel("spindle speed (rpm)")
     ax.set_ylabel("limiting depth a_lim (mm)")
     ax.set_title("Chatter stability lobes")
-    ax.set_ylim(0, min(amin * 8, float(np.percentile(alim, 95))))
-    ax.set_xlim(0, float(np.percentile(rpm, 98)))
+    ax.set_ylim(0, amin * 8)
+    # the high-speed lobe asymptotes toward infinite rpm; bound to the
+    # operating range so the useful lobes are not cramped.
+    xmax = 2.0 * feed_rpm if feed_rpm else float(np.percentile(rpm, 80))
+    ax.set_xlim(0, xmax)
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()

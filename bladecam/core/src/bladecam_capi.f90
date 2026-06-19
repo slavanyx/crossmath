@@ -8,7 +8,7 @@ module bladecam_capi
   use iso_c_binding, only: c_int, c_double
   use vec3_mod,   only: dp
   use ruled_mod,  only: distribution
-  use flank_mod,  only: two_point, deviation
+  use flank_mod,  only: two_point, deviation, deviation_cone
   use flank_opt_mod, only: refine_minmax, optimize_global
   use kinematics_mod, only: inverse_kin_ac
   use topp_mod, only: topp_ra
@@ -41,6 +41,15 @@ contains
     real(c_double), intent(out) :: g(npts)
     call deviation(q0, alpha, R, pts, npts, g)
   end subroutine bc_deviation
+
+  subroutine bc_deviation_cone(q0, alpha, R, gamma, pts, npts, g) &
+       bind(C, name="bc_deviation_cone")
+    integer(c_int), value :: npts
+    real(c_double), intent(in)  :: q0(3), alpha(3), pts(3, npts)
+    real(c_double), value       :: R, gamma
+    real(c_double), intent(out) :: g(npts)
+    call deviation_cone(q0, alpha, R, gamma, pts, npts, g)
+  end subroutine bc_deviation_cone
 
   subroutine bc_refine_minmax(a_pt, ap, b_pt, bp, R, nv, q0, alpha, emax) &
        bind(C, name="bc_refine_minmax")

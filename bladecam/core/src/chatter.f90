@@ -37,7 +37,9 @@ contains
         img = (1.0_dp / k_stiff) * (-2.0_dp*zeta*r) / denom
         wc = r * wn
         psi = atan2(img, reg)
-        eps = pi - 2.0_dp*psi
+        ! phase shift between successive teeth, reduced to [0, 2*pi) so that
+        ! lobe index k=0 is the highest-speed (high-speed-machining) lobe.
+        eps = modulo(pi - 2.0_dp*psi, 2.0_dp*pi)
         a = -1.0_dp / (2.0_dp * Kt * real(n_teeth, dp) * reg)
         idx = idx + 1
         alim(idx) = a

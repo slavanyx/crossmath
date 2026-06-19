@@ -80,11 +80,16 @@ class AppModel:
         return out
 
     def compute_compare_full(self) -> dict:
-        """Scalar metrics per strategy: peak deviation (µm), jerk, cycle (s)."""
+        """Per strategy: deviation array plus scalar metrics (µm, jerk, cycle).
+
+        One pipeline run per strategy; reused for both the deviation and
+        comparison charts so the GUI never recomputes on the UI thread.
+        """
         out = {}
         for s in STRATEGIES:
             r = compute(self.build_params(strategy=s))
-            out[s] = dict(dev_um=float(r["dev"].max() * 1000.0),
+            out[s] = dict(dev=r["dev"],
+                          dev_um=float(r["dev"].max() * 1000.0),
                           jerk=float(r["orient_jerk"]),
                           cycle_s=float(r["cycle_time_s"]))
         return out
