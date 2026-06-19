@@ -38,6 +38,11 @@ class ProcessParams:
     spindle_gap: float = 5.0  # mm (clearance below the spindle nose)
     spindle_len: float = 80.0 # mm (modelled spindle-nose length)
     ap: float = 4.0           # axial depth of cut, mm
+    ae: float = None          # radial width of cut, mm (None -> 0.5*tool_dia)
+    Kte: float = 20.0         # tangential EDGE coeff, N/mm
+    Kre: float = 18.0         # radial edge coeff, N/mm
+    spindle_power_kW: float = 15.0   # available spindle power
+    max_force_N: float = 2500.0      # max allowed resultant cutting force
     E: float = 600.0e3        # Young's modulus, N/mm^2 (carbide ~600 GPa)
     dev_allow_um: float = 50.0   # allowed deflection-induced error, micron
     feed_max_mm_min: float = 6000.0  # user/machine feed ceiling
@@ -45,28 +50,92 @@ class ProcessParams:
     def nominal_feed_mm_min(self) -> float:
         return self.fz * self.n_teeth * self.rpm
 
-    def deflection_feed_cap_mm_min(self) -> float:
-        """Cap feed so cutting-force tool deflection stays under dev_allow.
+    def _ae(self) -> float:
+        return self.ae if self.ae is not None else 0.5 * self.tool_dia
 
-        F = Kt*ap*fz*sqrt(1+Kr^2); cantilever delta = F*L^3/(3 E I),
-        I = 0.8*pi*d^4/64. Solve for the fz that yields delta = dev_allow,
-        then feed = fz * n_teeth * rpm.
+    def cutting_forces(self, fz: float, ae: float = None) -> dict:
+        """Mechanistic milling-force model (Altintas): integrate the per-tooth
+        tangential/radial forces (cutting coeff Kt/Kr*Kt + edge Kte/Kre) over the
+        engaged arc and teeth across one tooth pitch. Returns peak & mean
+        resultant force (N), mean spindle power (W) and torque (N*m).
+
+        Chip thickness h(phi)=fz*sin(phi); engagement arc phi in [0, acos(1-ae/R)]
+        for radial width ae and cutter radius R; teeth at phi_k = theta+k*2pi/N.
         """
+        import numpy as np
+        R = 0.5 * self.tool_dia
+        ae = self._ae() if ae is None else ae
+        ae = max(1e-6, min(ae, 2.0 * R))
+        phi_ex = math.acos(max(-1.0, min(1.0, 1.0 - ae / R)))   # exit angle
+        Ktc, Krc = self.Kt, self.Kr * self.Kt
+        N = self.n_teeth
+        th = np.linspace(0.0, 2.0 * math.pi / N, 200, endpoint=False)
+        Sx = np.zeros_like(th); Sy = np.zeros_like(th); St = np.zeros_like(th)
+        for k in range(N):
+            phi = np.mod(th + k * 2.0 * math.pi / N, 2.0 * math.pi)
+            eng = phi <= phi_ex                                   # engaged teeth
+            s = np.sin(phi)
+            Ft = self.ap * (Ktc * fz * s + self.Kte) * eng
+            Fr = self.ap * (Krc * fz * s + self.Kre) * eng
+            Sx += -Ft * np.cos(phi) - Fr * np.sin(phi)           # tool-frame Fx
+            Sy += Ft * np.sin(phi) - Fr * np.cos(phi)            # tool-frame Fy
+            St += Ft                                             # tangential (torque)
+        Fmag = np.hypot(Sx, Sy)
+        omega = 2.0 * math.pi * self.rpm / 60.0                   # rad/s
+        torque = St * (R * 1e-3)                                  # N*m (R in m)
+        power = torque * omega                                    # W
+        return dict(F_peak=float(Fmag.max()), F_mean=float(Fmag.mean()),
+                    power_W=float(power.mean()), torque_Nm=float(torque.mean()),
+                    phi_ex=phi_ex)
+
+    def mechanistic_feed_cap_mm_min(self, ae: float = None) -> float:
+        """Largest feed (mm/min) whose mechanistic forces respect ALL of: tool
+        deflection <= dev_allow, resultant force <= max_force_N, and spindle power
+        <= spindle_power_kW. Forces grow monotonically with fz, so bisect fz."""
         d = self.tool_dia
         I = 0.8 * math.pi * d**4 / 64.0
         L = self.flute_len
-        dev_allow = self.dev_allow_um * 1e-3  # mm
-        # delta = (Kt*ap*fz*sqrt(1+Kr^2)) * L^3 / (3 E I)  -> fz_max
-        k = self.Kt * self.ap * math.sqrt(1.0 + self.Kr**2) * L**3 / (3.0 * self.E * I)
-        if k <= 0:
-            return self.feed_max_mm_min
-        fz_max = dev_allow / k
-        return fz_max * self.n_teeth * self.rpm
+        dev_allow = self.dev_allow_um * 1e-3                      # mm
+        pmax = self.spindle_power_kW * 1000.0
+
+        def ok(fz):
+            f = self.cutting_forces(fz, ae)
+            defl = f["F_peak"] * L**3 / (3.0 * self.E * I)        # cantilever, mm
+            return (defl <= dev_allow and f["F_peak"] <= self.max_force_N
+                    and f["power_W"] <= pmax)
+
+        if not ok(1e-6):
+            return 0.0                                            # even a sliver overloads
+        lo, hi = 1e-6, 1.0
+        if ok(hi):
+            fz = hi
+        else:
+            for _ in range(40):
+                mid = 0.5 * (lo + hi)
+                if ok(mid):
+                    lo = mid
+                else:
+                    hi = mid
+            fz = lo
+        return fz * self.n_teeth * self.rpm
+
+    # backward-compatible alias (now mechanistic)
+    def deflection_feed_cap_mm_min(self) -> float:
+        return self.mechanistic_feed_cap_mm_min()
 
     def effective_feed_mm_min(self) -> float:
-        return min(self.feed_max_mm_min,
-                   self.deflection_feed_cap_mm_min(),
-                   self.nominal_feed_mm_min())
+        # floor at 1 mm/min: a 0 cap means the cut is infeasible on this
+        # spindle/tool (forces alone overload it) -- surfaced via cutting_forces
+        # / feed_feasible, while keeping the downstream feed schedule numerically
+        # well-posed.
+        return max(1.0, min(self.feed_max_mm_min,
+                            self.mechanistic_feed_cap_mm_min(),
+                            self.nominal_feed_mm_min()))
+
+    def feed_feasible(self) -> bool:
+        """False when the mechanistic forces overload the spindle/tool even at a
+        vanishing feed (the cut itself is infeasible, not just feed-limited)."""
+        return self.mechanistic_feed_cap_mm_min() > 0.0
 
 
 def read_frf_csv(path: str):
