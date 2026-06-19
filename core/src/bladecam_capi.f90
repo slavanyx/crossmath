@@ -9,7 +9,7 @@ module bladecam_capi
   use vec3_mod,   only: dp
   use ruled_mod,  only: distribution
   use flank_mod,  only: two_point, deviation, deviation_cone, swept_deviation, &
-                        swept_surface
+                        swept_surface, deviation_barrel
   use flank_opt_mod, only: refine_minmax, optimize_global, optimize_double_flank
   use kinematics_mod, only: inverse_kin_ac
   use topp_mod, only: topp_ra
@@ -135,24 +135,34 @@ contains
   end subroutine bc_topp
 
   !> Swept-envelope deviation of design points vs the whole toolpath.
-  subroutine bc_swept_deviation(q0, alpha, Lflute, R, gamma, nu, pts, npts, g) &
-       bind(C, name="bc_swept_deviation")
+  subroutine bc_swept_deviation(q0, alpha, Lflute, R, gamma, Rb, lamc, nu, &
+       pts, npts, g) bind(C, name="bc_swept_deviation")
     integer(c_int), value :: nu, npts
     real(c_double), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), pts(3,npts)
-    real(c_double), value       :: R, gamma
+    real(c_double), value       :: R, gamma, Rb, lamc
     real(c_double), intent(out) :: g(npts)
-    call swept_deviation(q0, alpha, Lflute, R, gamma, nu, pts, npts, g)
+    call swept_deviation(q0, alpha, Lflute, R, gamma, Rb, lamc, nu, pts, npts, g)
   end subroutine bc_swept_deviation
 
   !> True swept-envelope surface: machined point for each design point.
-  subroutine bc_swept_surface(q0, alpha, Lflute, R, gamma, nu, pts, npts, mpts) &
-       bind(C, name="bc_swept_surface")
+  subroutine bc_swept_surface(q0, alpha, Lflute, R, gamma, Rb, lamc, nu, &
+       pts, npts, mpts) bind(C, name="bc_swept_surface")
     integer(c_int), value :: nu, npts
     real(c_double), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), pts(3,npts)
-    real(c_double), value       :: R, gamma
+    real(c_double), value       :: R, gamma, Rb, lamc
     real(c_double), intent(out) :: mpts(3,npts)
-    call swept_surface(q0, alpha, Lflute, R, gamma, nu, pts, npts, mpts)
+    call swept_surface(q0, alpha, Lflute, R, gamma, Rb, lamc, nu, pts, npts, mpts)
   end subroutine bc_swept_surface
+
+  !> Per-station deviation for a barrel (circle-segment) tool.
+  subroutine bc_deviation_barrel(q0, alpha, R, Rb, lamc, pts, npts, g) &
+       bind(C, name="bc_deviation_barrel")
+    integer(c_int), value :: npts
+    real(c_double), intent(in)  :: q0(3), alpha(3), pts(3, npts)
+    real(c_double), value       :: R, Rb, lamc
+    real(c_double), intent(out) :: g(npts)
+    call deviation_barrel(q0, alpha, R, Rb, lamc, pts, npts, g)
+  end subroutine bc_deviation_barrel
 
   !> Tool+holder clearance to an obstacle cloud, per station. clr(nu) < 0 means
   !> collision/gouge.

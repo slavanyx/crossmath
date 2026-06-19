@@ -63,10 +63,12 @@ _lib.bc_swept_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
                                     c_int, _DBL]
 _lib.bc_holder_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
                                      c_int, _DBL, c_int, _DBL]
-_lib.bc_swept_deviation.argtypes = [_DBL, _DBL, _DBL, c_double, c_double, c_int,
-                                    _DBL, c_int, _DBL]
-_lib.bc_swept_surface.argtypes = [_DBL, _DBL, _DBL, c_double, c_double, c_int,
-                                  _DBL, c_int, _DBL]
+_lib.bc_swept_deviation.argtypes = [_DBL, _DBL, _DBL, c_double, c_double,
+                                    c_double, c_double, c_int, _DBL, c_int, _DBL]
+_lib.bc_swept_surface.argtypes = [_DBL, _DBL, _DBL, c_double, c_double,
+                                  c_double, c_double, c_int, _DBL, c_int, _DBL]
+_lib.bc_deviation_barrel.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
+                                     _DBL, c_int, _DBL]
 _lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
@@ -253,33 +255,47 @@ def holder_clearance(q0, alpha, pts, holder_R, base, holder_len):
     return clr
 
 
+def deviation_barrel(q0, alpha, R: float, Rb: float, lamc: float,
+                     pts: np.ndarray) -> np.ndarray:
+    """Per-station signed deviation for a BARREL (circle-segment) tool: arc
+    radius Rb, widest radius R at axial position lamc along alpha from q0."""
+    q0 = _c(q0); alpha = _c(alpha); pts = _c(pts)
+    npts = pts.shape[0]
+    g = np.empty(npts, dtype=np.float64)
+    _lib.bc_deviation_barrel(_ptr(q0), _ptr(alpha), c_double(R), c_double(Rb),
+                             c_double(lamc), _ptr(pts), c_int(npts), _ptr(g))
+    return g
+
+
 def swept_deviation(q0, alpha, Lflute, R: float, pts: np.ndarray,
-                    gamma: float = 0.0) -> np.ndarray:
+                    gamma: float = 0.0, Rb: float = 0.0,
+                    lamc: float = 0.0) -> np.ndarray:
     """Swept-envelope deviation: signed distance of each point in pts(npts,3) to
-    the closest of all cutter positions (finite flutes), minus the local tool
-    radius. q0,alpha are (nu,3); Lflute is (nu,); gamma is the tool taper
-    half-angle (0=cylinder). g<0 = real overcut (cross-station interference)."""
+    the closest of all cutter positions (finite flutes). q0,alpha are (nu,3);
+    Lflute (nu,). Tool family: gamma=taper half-angle (cone), or Rb>0 with widest
+    radius R at axial lamc (barrel); Rb<=0,gamma=0 is a cylinder. g<0 = overcut."""
     q0 = _c(q0); alpha = _c(alpha); Lflute = _c(Lflute); pts = _c(pts)
     nu = q0.shape[0]; npts = pts.shape[0]
     g = np.empty(npts, dtype=np.float64)
     _lib.bc_swept_deviation(_ptr(q0), _ptr(alpha), _ptr(Lflute), c_double(R),
-                            c_double(gamma), c_int(nu), _ptr(pts), c_int(npts),
-                            _ptr(g))
+                            c_double(gamma), c_double(Rb), c_double(lamc),
+                            c_int(nu), _ptr(pts), c_int(npts), _ptr(g))
     return g
 
 
 def swept_surface(q0, alpha, Lflute, R: float, pts: np.ndarray,
-                  gamma: float = 0.0) -> np.ndarray:
+                  gamma: float = 0.0, Rb: float = 0.0,
+                  lamc: float = 0.0) -> np.ndarray:
     """True swept-envelope surface: the machined point for each design point in
     pts(npts,3), projected onto the nearest finite-flute cutter over the whole
-    path (the boundary of the swept tool volume). q0,alpha are (nu,3); Lflute is
-    (nu,); gamma is the taper half-angle (0=cylinder). Returns mpts(npts,3)."""
+    path. Tool family as in swept_deviation (cylinder/cone/barrel). Returns
+    mpts(npts,3)."""
     q0 = _c(q0); alpha = _c(alpha); Lflute = _c(Lflute); pts = _c(pts)
     nu = q0.shape[0]; npts = pts.shape[0]
     mpts = np.empty((npts, 3), dtype=np.float64)
     _lib.bc_swept_surface(_ptr(q0), _ptr(alpha), _ptr(Lflute), c_double(R),
-                          c_double(gamma), c_int(nu), _ptr(pts), c_int(npts),
-                          _ptr(mpts))
+                          c_double(gamma), c_double(Rb), c_double(lamc),
+                          c_int(nu), _ptr(pts), c_int(npts), _ptr(mpts))
     return mpts
 
 
