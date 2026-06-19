@@ -10,7 +10,7 @@
 !>   optimised jointly (unlike min-max followed by a separate smoothing pass).
 module flank_opt_mod
   use vec3_mod
-  use flank_mod, only: two_point, deviation_cone
+  use flank_mod, only: two_point, deviation_cone, deviation_barrel
   implicit none
   private
   public :: refine_minmax, optimize_global, optimize_double_flank
@@ -27,6 +27,8 @@ module flank_opt_mod
   real(dp) :: ctx_alpha_nb(3) = 0.0_dp  ! neighbour axis target
   real(dp) :: ctx_q0_nb(3) = 0.0_dp     ! neighbour point target
   real(dp) :: ctx_gamma = 0.0_dp        ! tool taper half-angle (0 = cylinder)
+  real(dp) :: ctx_Rb = 0.0_dp           ! barrel arc radius (0 = cyl/cone)
+  real(dp) :: ctx_lamc = 0.0_dp         ! barrel widest-point axial position
   real(dp), parameter :: ctx_wq = 0.01_dp  ! relative weight of point penalty
   ! swept-overcut penalty: discourage the current axis from radially reaching
   ! into NEIGHBOURING rulings' surface (the cross-station interference metric)
@@ -41,7 +43,7 @@ contains
     integer,  intent(in)  :: nv
     real(dp), intent(out) :: q0(3), alpha(3), emax
     real(dp) :: alpha0(3), q00(3)
-    ctx_gamma = 0.0_dp
+    ctx_gamma = 0.0_dp; ctx_Rb = 0.0_dp
     ctx_swept_w = 0.0_dp          ! per-ruling refine has no neighbour context
     call two_point(a_pt, ap, b_pt, bp, R, q00, alpha0)
     call refine_seeded(a_pt, b_pt, R, nv, alpha0, q00, 0.0_dp, &
@@ -49,14 +51,14 @@ contains
   end subroutine refine_minmax
 
   subroutine optimize_global(a, b, ap, bp, nu, R, nv, mu, gamma, nsweeps, &
-                             swept_w, window, q0, alpha, dev)
+                             swept_w, window, Rb, lamc, q0, alpha, dev)
     integer,  intent(in)  :: nu, nv, nsweeps, window
     real(dp), intent(in)  :: a(3,nu), b(3,nu), ap(3,nu), bp(3,nu), R, mu, gamma
-    real(dp), intent(in)  :: swept_w
+    real(dp), intent(in)  :: swept_w, Rb, lamc
     real(dp), intent(out) :: q0(3,nu), alpha(3,nu), dev(nu)
     integer  :: i, sw, lo, hi
     real(dp) :: anb(3), qnb(3), e
-    ctx_gamma = gamma
+    ctx_gamma = gamma; ctx_Rb = Rb; ctx_lamc = lamc
 
     ! swept-overcut penalty context (the optimizer can now reduce cross-station
     ! interference, not just the per-ruling deviation)
@@ -105,7 +107,7 @@ contains
     integer  :: i, sw, lo, hi
     real(dp) :: anb(3), qnb(3), seed_a(3), seed_q(3)
 
-    ctx_gamma = gamma
+    ctx_gamma = gamma; ctx_Rb = 0.0_dp     ! double-flank is cylinder/cone only
     ! seed: axis centred in the channel, along the mean ruling direction
     do i = 1, nu
       seed_q = 0.25_dp*(aL(:,i)+bL(:,i)+aR(:,i)+bR(:,i))
@@ -199,6 +201,18 @@ contains
     end do
   end subroutine nm_optimize
 
+  !> Signed deviation of one point for the active tool family (cone or barrel),
+  !> driven by the module context. Keeps objval/peak_dev tool-agnostic.
+  subroutine tool_dev(q0, alpha, R, pt, g)
+    real(dp), intent(in)  :: q0(3), alpha(3), R, pt(3)
+    real(dp), intent(out) :: g(1)
+    if (ctx_Rb > 0.0_dp) then
+      call deviation_barrel(q0, alpha, R, ctx_Rb, ctx_lamc, pt, 1, g)
+    else
+      call deviation_cone(q0, alpha, R, ctx_gamma, pt, 1, g)
+    end if
+  end subroutine tool_dev
+
   function peak_dev(a_pt, b_pt, q0, alpha, R, nv) result(emax)
     real(dp), intent(in) :: a_pt(3), b_pt(3), q0(3), alpha(3), R
     integer,  intent(in) :: nv
@@ -208,7 +222,7 @@ contains
     do j = 1, nv
       v = real(j - 1, dp) / real(nv - 1, dp)
       pt = (1.0_dp - v) * a_pt + v * b_pt
-      call deviation_cone(q0, alpha, R, ctx_gamma, pt, 1, g)
+      call tool_dev(q0, alpha, R, pt, g)
       emax = max(emax, abs(g(1)))
     end do
   end function peak_dev
@@ -231,14 +245,14 @@ contains
     do j = 1, ctx_nv
       v = real(j - 1, dp) / real(ctx_nv - 1, dp)
       pt = (1.0_dp - v) * ctx_a + v * ctx_b
-      call deviation_cone(q0, alpha, ctx_R, ctx_gamma, pt, 1, g)
+      call tool_dev(q0, alpha, ctx_R, pt, g)
       f = max(f, abs(g(1)))
     end do
     if (ctx_double) then          ! second wall (double-flank channel)
       do j = 1, ctx_nv
         v = real(j - 1, dp) / real(ctx_nv - 1, dp)
         pt = (1.0_dp - v) * ctx_a2 + v * ctx_b2
-        call deviation_cone(q0, alpha, ctx_R, ctx_gamma, pt, 1, g)
+        call tool_dev(q0, alpha, ctx_R, pt, g)
         f = max(f, abs(g(1)))
       end do
     end if

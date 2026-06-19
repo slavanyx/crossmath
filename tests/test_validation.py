@@ -185,8 +185,34 @@ def test_swept_penalty_finite_flute():
           f"({oc_off*1000:.0f} -> {oc_on*1000:.0f} um)")
 
 
+def test_barrel_aware_optimization():
+    """Optimising with the barrel tool model must fit the circle-segment flank
+    better than a cylinder-optimised axis evaluated as a barrel."""
+    from bladecam import blade, optimize, core
+    a, b = blade.make_blade(50, 30, 55, 20, 8, 0.6, 0.9)
+    ap, bp = blade.rail_tangents(a, b); R = 6.0
+    Rb = 120.0; lamc = 0.5*np.mean(np.linalg.norm(b - a, axis=1))
+
+    def barrel_dev(q0, al):
+        e = 0.0
+        for i in range(len(q0)):
+            v = np.linspace(0, 1, 41); pts = (1-v)[:, None]*a[i] + v[:, None]*b[i]
+            e = max(e, np.max(np.abs(core.deviation_barrel(q0[i], al[i], R, Rb, lamc, pts))))
+        return e
+
+    rb = optimize.optimize_blade(a, b, ap, bp, R, strategy="global",
+                                 barrel_R=Rb, barrel_pos=lamc)["global"]
+    rc = optimize.optimize_blade(a, b, ap, bp, R, strategy="global")["global"]
+    eb, ec = barrel_dev(rb["q0"], rb["alpha"]), barrel_dev(rc["q0"], rc["alpha"])
+    check(eb < 0.6*ec, "barrel-aware opt fits the barrel better than cyl axis",
+          f"({eb*1000:.0f} vs {ec*1000:.0f} um)")
+    # the optimiser's own reported dev uses the barrel model
+    check(abs(rb["dev"].max() - eb) < 0.05, "reported dev uses the barrel model")
+
+
 def main():
     for fn in (test_developable_mills_to_zero,
+               test_barrel_aware_optimization,
                test_optimization_is_monotonic,
                test_global_beats_naive_floor,
                test_topp_respects_limits,
