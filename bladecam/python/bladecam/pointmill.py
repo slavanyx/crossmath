@@ -22,18 +22,24 @@ def surface_normals(surf: np.ndarray) -> np.ndarray:
     return np.divide(n, ln, out=np.zeros_like(n), where=ln > 0)
 
 
-def point_mill(surf: np.ndarray, R_ball: float, scallop_allow: float):
+def point_mill(surf: np.ndarray, R_ball: float, scallop_allow: float,
+               orient: str = "radial"):
     """Generate ball-nose raster rows over `surf` (nu,nv,3).
 
     Rows run along u; stepover across v is chosen so the scallop between rows
-    stays <= scallop_allow. Returns a dict with the resampled contact grid,
+    stays <= scallop_allow. `orient` fixes the normal/offset side deterministically
+    (the cross-product sign alone flips with grid ordering and could put the ball
+    INSIDE the part): "radial" points the ball away from the Z (impeller) axis;
+    None keeps the raw cross-product sign. Returns the resampled contact grid,
     cutter locations (ball centres), tool axes (normals), row count, achieved
     scallop, and total path length.
     """
     nu, nv, _ = surf.shape
-    # physical cross-width (along v) averaged over u
+    # physical cross-width (along v) per u-section; size rows from the WIDEST
+    # section so the scallop budget holds everywhere (not just on average).
     seg = np.linalg.norm(np.diff(surf, axis=1), axis=2)      # (nu, nv-1)
-    width = float(np.mean(np.sum(seg, axis=1)))
+    sec_w = np.sum(seg, axis=1)                              # (nu,)
+    width = float(np.max(sec_w))
     p_max = np.sqrt(8.0 * R_ball * scallop_allow)
     n_rows = max(2, int(np.ceil(width / p_max)) + 1)
 
@@ -48,6 +54,16 @@ def point_mill(surf: np.ndarray, R_ball: float, scallop_allow: float):
     normals = (1 - frac) * nrm[:, lo, :] + frac * nrm[:, hi, :]
     ln = np.linalg.norm(normals, axis=2, keepdims=True)
     normals = np.divide(normals, ln, out=np.zeros_like(normals), where=ln > 0)
+
+    # deterministic offset side: keep the ball outside the part
+    if orient == "radial":
+        cen = contact.reshape(-1, 3).mean(0)
+        rad = np.array([cen[0], cen[1], 0.0])
+        rn = np.linalg.norm(rad)
+        if rn > 1e-9:
+            rad /= rn
+            if float(normals.reshape(-1, 3).mean(0) @ rad) < 0.0:
+                normals = -normals
 
     cl = contact + R_ball * normals
     row_spacing = width / (n_rows - 1)
