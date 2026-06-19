@@ -36,7 +36,21 @@ def main():
         good &= bool(np.all(np.isfinite(m.compute_current()["dev"])))
     check(good, "all strategies compute via the model")
 
+    # OrcaSlicer-style presets flow through the model into compute()
+    m.apply_preset("strategy", "Barrel finish (R200)")
+    m.apply_preset("tool", "16 mm 5FL roughing")
+    m.apply_preset("machine", "Compact blisk cell")
+    p = m.build_params()
+    check(p.barrel_R == 200.0 and p.process.tool_dia == 16.0
+          and p.machine.name == "Compact blisk cell",
+          "machine/tool/strategy presets drive build_params")
+    check(np.all(np.isfinite(m.compute_current()["dev"])),
+          "preset-configured model computes")
+    check(m.capture_preset("strategy")["barrel_R"] == 200.0,
+          "capture_preset round-trips the live state")
+
     # comparison data + its two charts
+    m.strategy = "global"
     stats = m.compute_compare_full()
     check(all("dev" in stats[s] for s in stats), "compare-full carries dev arrays")
     charts.deviation_chart({s: stats[s]["dev"] for s in stats})
