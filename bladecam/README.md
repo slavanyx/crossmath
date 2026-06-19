@@ -146,10 +146,22 @@ matplotlib):
 - **GUI**: "Load blade from STEP/IGES" (extract rails → optimise the real
   blade), "Overlay CAD", "Use parametric", and rails-CSV / STL / G-code export.
 
+**Phase 9 (measured-FRF chatter, double-flank, blisk)**
+- **Measured-FRF chatter** (`chatter.stability_lobes_frf`): stability lobes from
+  a tap-test receptance instead of a single mode; matches the modal model on a
+  synthesised mode to <2%. GUI "Load tool-tip FRF (CSV)".
+- **Double-flank channel milling** (`optimize_double_flank`,
+  `pipeline.double_flank_channel`): one cylinder tangent to both channel walls;
+  exact planar channel mills both walls to ~0. GUI "Compute double-flank channel".
+- **Multi-face blisk extraction** (`cadio.rails_from_all_faces` /
+  `rails_list_from_cad`): one rail pair per blade across all flank faces. GUI
+  "Load blisk (all blades)" + "Next blisk blade".
+
 ## Roadmap
 
-- Stability lobes from a *measured* tool-tip FRF (replace the modal model).
-- Double-flank milling of thin blades (one tool, both sides).
-- Multi-face blisk import (per-blade rail extraction across all flank faces).
+- Edge-based rail extraction for trimmed faces (current path assumes full-UV
+  ruled faces).
+- 5-axis post-processor variants (head-head, head-table kinematics).
+- Tool-holder collision and full machine-envelope simulation.
 
 See the design notes for the governing formulas behind each phase.

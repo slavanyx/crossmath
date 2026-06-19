@@ -234,34 +234,50 @@ def _straightness(pts):
     return float(np.max(np.linalg.norm(pts - proj, axis=1)) / L)
 
 
-def rails_from_shape(shape, nu: int = 60, face_index=None, ndetect: int = 11):
-    """Extract hub/shroud rails (a, b) of shape's blade face as (nu,3) arrays.
-
-    The blade flank is taken as the largest face (or face_index). The ruling
-    (hub->shroud) direction is auto-detected as the parameter whose isocurves
-    are straightest; the two rails are that face's boundary curves across it.
-
-    Assumes an untrimmed (rectangular-UV) ruled-ish flank face -- the typical
-    output of a blade loft. For a (near-)planar or otherwise direction-ambiguous
-    face the choice is geometrically benign (deviation is ~0 either way); the
-    tie-break is deterministic. Trimmed faces whose valid region is not the full
-    UV box, and multi-face blisks, need an explicit face_index / edge-based
-    extraction (roadmap).
-    """
+def _all_faces(shape):
     from OCP.TopExp import TopExp_Explorer
     from OCP.TopAbs import TopAbs_FACE
     from OCP.TopoDS import TopoDS
-    from OCP.BRep import BRep_Tool
-    from OCP.BRepTools import BRepTools
+    faces = []
+    exp = TopExp_Explorer(shape, TopAbs_FACE)
+    while exp.More():
+        faces.append(TopoDS.Face_s(exp.Current())); exp.Next()
+    return faces
 
+
+def _face_area(face):
+    from OCP.GProp import GProp_GProps
+    from OCP.BRepGProp import BRepGProp
+    g = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(face, g)
+    return g.Mass()
+
+
+def rails_from_shape(shape, nu: int = 60, face_index=None, ndetect: int = 11):
+    """Extract hub/shroud rails (a, b) of shape's blade face as (nu,3) arrays.
+
+    The blade flank is taken as the largest face (or face_index). See
+    _rails_from_face for the ruling-detection details and assumptions.
+    """
     if face_index is None:
         face = _largest_face(shape)
     else:
-        faces = []
-        exp = TopExp_Explorer(shape, TopAbs_FACE)
-        while exp.More():
-            faces.append(TopoDS.Face_s(exp.Current())); exp.Next()
-        face = faces[face_index]
+        face = _all_faces(shape)[face_index]
+    return _rails_from_face(face, nu, ndetect)
+
+
+def _rails_from_face(face, nu: int = 60, ndetect: int = 11):
+    """Extract hub/shroud rails of a single B-rep face.
+
+    The ruling (hub->shroud) direction is auto-detected as the parameter whose
+    isocurves are straightest; the two rails are the face's boundary curves
+    across it. Assumes an untrimmed (rectangular-UV) ruled-ish flank face (the
+    typical blade-loft output). For (near-)planar / ambiguous faces the choice
+    is geometrically benign and the tie-break is deterministic. Trimmed faces
+    whose valid region is not the full UV box need edge-based extraction.
+    """
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepTools import BRepTools
 
     s = BRep_Tool.Surface_s(face)
     umin, umax, vmin, vmax = BRepTools.UVBounds_s(face)
@@ -292,14 +308,38 @@ def rails_from_shape(shape, nu: int = 60, face_index=None, ndetect: int = 11):
     return np.ascontiguousarray(a), np.ascontiguousarray(b)
 
 
-def rails_from_cad(path: str, nu: int = 60, face_index=None):
-    """Load a STEP/IGES blade and return ruled hub/shroud rails (a, b)."""
+def rails_from_all_faces(shape, nu: int = 60, min_area_frac: float = 0.3):
+    """Extract rails for EVERY flank face of a blisk shape.
+
+    Faces with area >= min_area_frac * (largest face area) are treated as blade
+    flanks (this rejects small fillets/edges/platform slivers). Returns a list
+    of (a, b) rail pairs, one per blade, ordered largest-area first.
+    """
+    faces = _all_faces(shape)
+    if not faces:
+        raise ValueError("no faces in shape")
+    areas = [_face_area(f) for f in faces]
+    amax = max(areas)
+    kept = [f for f, ar in sorted(zip(faces, areas), key=lambda t: -t[1])
+            if ar >= min_area_frac * amax]
+    return [_rails_from_face(f, nu) for f in kept]
+
+
+def _shape_from_cad(path: str):
     ext = path.lower().rsplit(".", 1)[-1]
     if ext in ("step", "stp"):
-        shape = _read_step_shape(path)
-    elif ext in ("iges", "igs"):
-        shape = _read_iges_shape(path)
-    else:
-        raise ValueError("rail extraction needs a STEP/IGES B-rep surface, "
-                         f"not .{ext}")
-    return rails_from_shape(shape, nu=nu, face_index=face_index)
+        return _read_step_shape(path)
+    if ext in ("iges", "igs"):
+        return _read_iges_shape(path)
+    raise ValueError(f"rail extraction needs a STEP/IGES B-rep surface, not .{ext}")
+
+
+def rails_from_cad(path: str, nu: int = 60, face_index=None):
+    """Load a STEP/IGES blade and return ruled hub/shroud rails (a, b)."""
+    return rails_from_shape(_shape_from_cad(path), nu=nu, face_index=face_index)
+
+
+def rails_list_from_cad(path: str, nu: int = 60, min_area_frac: float = 0.3):
+    """Load a STEP/IGES blisk and return a list of (a, b) rails, one per blade."""
+    return rails_from_all_faces(_shape_from_cad(path), nu=nu,
+                                min_area_frac=min_area_frac)
