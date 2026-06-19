@@ -11,6 +11,7 @@ import numpy as np
 
 from . import core, blade, optimize
 from .process import MachineLimits, ProcessParams
+from .machine import reachability
 
 
 @dataclass
@@ -215,6 +216,13 @@ def compute(p: Params) -> dict:
     m[:, 3] = np.unwrap(m[:, 3])                      # unwrap A, C for TOPP
     m[:, 4] = np.unwrap(m[:, 4])
 
+    # machine reachability: does this toolpath fit the machine's travel/rotary
+    # envelope? (only when a full Machine profile is supplied, not bare limits)
+    axis_violations = (reachability(p.machine, m)
+                       if hasattr(p.machine, "x_range") else {})
+    reachable = len(axis_violations) == 0
+    machine_name = getattr(p.machine, "name", "custom limits")
+
     # --- collision: full tool ASSEMBLY (flute+holder+spindle) vs neighbour
     # blades, swept over the whole motion, plus an optional fixture/table plane.
     flat = surf.reshape(-1, 3)
@@ -278,6 +286,8 @@ def compute(p: Params) -> dict:
         machine_path=m, aprof=aprof, cycle_time_s=cycle_s,
         min_clearance=min_clear, collision_free=collision_free,
         holder_clearance=holder_min, assembly_clearance=float(clr.min()),
+        reachable=reachable, axis_violations=axis_violations,
+        machine_name=machine_name,
         gouge_max=gouge_max, swept_overcut=swept_overcut, clearance=clr,
         swept_field=swept_field, envelope_surf=envelope_surf,
         orient_jerk=optimize.orientation_jerk(alpha),
