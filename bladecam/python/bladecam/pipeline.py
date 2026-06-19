@@ -214,7 +214,12 @@ def compute(p: Params) -> dict:
                               pr.holder_dia * 0.5, pr.holder_gap, pr.holder_len)
     min_clear = float(clr.min())
     collision_free = bool(min_clear > 0.0)
-    gouge_max = float(max(0.0, -devfield.min()))   # depth the tool digs past the design surface
+    gouge_max = float(max(0.0, -devfield.min()))   # per-station depth past the design surface
+    # swept-envelope overcut: cross-station interference the per-station model
+    # misses (real flank-milling overcut in twisted LE/TE regions)
+    Lflute = np.linalg.norm(b - a, axis=1)
+    swept = core.swept_deviation(q0, alpha, Lflute, p.R, surf.reshape(-1, 3))
+    swept_overcut = float(max(0.0, -swept.min()))
 
     # --- Phase 4: time-optimal feed ---
     # contact-path arc length as an extra DOF carrying the process feed cap
@@ -235,7 +240,7 @@ def compute(p: Params) -> dict:
         delta=delta, q0=q0, alpha=alpha, dev=dev,
         machine_path=m, aprof=aprof, cycle_time_s=cycle_s,
         min_clearance=min_clear, collision_free=collision_free,
-        gouge_max=gouge_max, clearance=clr,
+        gouge_max=gouge_max, swept_overcut=swept_overcut, clearance=clr,
         orient_jerk=optimize.orientation_jerk(alpha),
         contact=contact, seglen=seglen, move_times_s=move_times,
         feed_cap_mm_min=feed_cap,

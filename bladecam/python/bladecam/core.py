@@ -58,6 +58,8 @@ _lib.bc_optimize_double_flank.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int,
                                           c_int, _DBL, _DBL, _DBL, _DBL]
 _lib.bc_tool_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
                                    c_double, c_double, c_int, _DBL, c_int, _DBL]
+_lib.bc_swept_deviation.argtypes = [_DBL, _DBL, _DBL, c_double, c_int,
+                                    _DBL, c_int, _DBL]
 _lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
@@ -208,6 +210,18 @@ def tool_clearance(q0, alpha, pts, R, flute_len, holder_R, gap, holder_len):
                            c_double(holder_R), c_double(gap), c_double(holder_len),
                            c_int(nu), _ptr(pts), c_int(npts), _ptr(clr))
     return clr
+
+
+def swept_deviation(q0, alpha, Lflute, R: float, pts: np.ndarray) -> np.ndarray:
+    """Swept-envelope deviation: signed distance of each point in pts(npts,3) to
+    the closest of all cutter positions (finite flutes), minus R. q0,alpha are
+    (nu,3); Lflute is (nu,). g<0 = real overcut (cross-station interference)."""
+    q0 = _c(q0); alpha = _c(alpha); Lflute = _c(Lflute); pts = _c(pts)
+    nu = q0.shape[0]; npts = pts.shape[0]
+    g = np.empty(npts, dtype=np.float64)
+    _lib.bc_swept_deviation(_ptr(q0), _ptr(alpha), _ptr(Lflute), c_double(R),
+                            c_int(nu), _ptr(pts), c_int(npts), _ptr(g))
+    return g
 
 
 def ik_path(Q: np.ndarray, O: np.ndarray, pivot, kind: int = 0) -> np.ndarray:

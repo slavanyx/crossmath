@@ -8,7 +8,7 @@ module bladecam_capi
   use iso_c_binding, only: c_int, c_double
   use vec3_mod,   only: dp
   use ruled_mod,  only: distribution
-  use flank_mod,  only: two_point, deviation, deviation_cone
+  use flank_mod,  only: two_point, deviation, deviation_cone, swept_deviation
   use flank_opt_mod, only: refine_minmax, optimize_global, optimize_double_flank
   use kinematics_mod, only: inverse_kin_ac
   use topp_mod, only: topp_ra
@@ -130,6 +130,16 @@ contains
     real(c_double), intent(out) :: ttotal
     call topp_ra(q, ndof, n, vmax, amax, a0, aN, aprof, ttotal)
   end subroutine bc_topp
+
+  !> Swept-envelope deviation of design points vs the whole toolpath.
+  subroutine bc_swept_deviation(q0, alpha, Lflute, R, nu, pts, npts, g) &
+       bind(C, name="bc_swept_deviation")
+    integer(c_int), value :: nu, npts
+    real(c_double), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), pts(3,npts)
+    real(c_double), value       :: R
+    real(c_double), intent(out) :: g(npts)
+    call swept_deviation(q0, alpha, Lflute, R, nu, pts, npts, g)
+  end subroutine bc_swept_deviation
 
   !> Tool+holder clearance to an obstacle cloud, per station. clr(nu) < 0 means
   !> collision/gouge.

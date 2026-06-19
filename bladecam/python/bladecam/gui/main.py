@@ -276,6 +276,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("min clearance", f"{r['min_clearance']:.2f} mm"),
             ("collision-free", str(r["collision_free"])),
             ("gouge depth", f"{r.get('gouge_max', 0.0)*1000:.1f} µm"),
+            ("swept overcut", f"{r.get('swept_overcut', 0.0)*1000:.1f} µm"),
         ]
         self.results_tbl.setRowCount(len(rows))
         for i, (k, v) in enumerate(rows):
