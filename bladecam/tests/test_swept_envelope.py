@@ -48,6 +48,19 @@ def main():
           "swept overcut grows with twist",
           f"({r_lo['swept_overcut']*1000:.0f} -> {r_hi['swept_overcut']*1000:.0f} um)")
 
+    # the global optimizer can trade per-ruling accuracy to reduce swept overcut:
+    # with the swept penalty on, cross-station interference must drop (at some
+    # cost to per-station deviation). Use a high-twist blade where the per-station
+    # optimum genuinely overcuts neighbours.
+    base = Params(strategy="global", twist=1.4)
+    r_off = compute(base)
+    r_on = compute(Params(strategy="global", twist=1.4, swept_weight=0.5))
+    check(r_on["swept_overcut"] < r_off["swept_overcut"] - 1e-6,
+          "swept penalty reduces swept overcut",
+          f"({r_off['swept_overcut']*1000:.0f} -> {r_on['swept_overcut']*1000:.0f} um)")
+    check(r_on["dev"].max() >= r_off["dev"].max(),
+          "swept penalty trades per-ruling deviation")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)

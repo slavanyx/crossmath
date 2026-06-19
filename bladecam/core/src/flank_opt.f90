@@ -28,6 +28,11 @@ module flank_opt_mod
   real(dp) :: ctx_q0_nb(3) = 0.0_dp     ! neighbour point target
   real(dp) :: ctx_gamma = 0.0_dp        ! tool taper half-angle (0 = cylinder)
   real(dp), parameter :: ctx_wq = 0.01_dp  ! relative weight of point penalty
+  ! swept-overcut penalty: discourage the current axis from radially reaching
+  ! into NEIGHBOURING rulings' surface (the cross-station interference metric)
+  real(dp), allocatable :: ctx_aa(:,:), ctx_bb(:,:)   ! full blade rails
+  integer  :: ctx_idx = 0, ctx_window = 0
+  real(dp) :: ctx_swept_w = 0.0_dp
 
 contains
 
@@ -37,19 +42,27 @@ contains
     real(dp), intent(out) :: q0(3), alpha(3), emax
     real(dp) :: alpha0(3), q00(3)
     ctx_gamma = 0.0_dp
+    ctx_swept_w = 0.0_dp          ! per-ruling refine has no neighbour context
     call two_point(a_pt, ap, b_pt, bp, R, q00, alpha0)
     call refine_seeded(a_pt, b_pt, R, nv, alpha0, q00, 0.0_dp, &
                        alpha0, q00, q0, alpha, emax)
   end subroutine refine_minmax
 
   subroutine optimize_global(a, b, ap, bp, nu, R, nv, mu, gamma, nsweeps, &
-                             q0, alpha, dev)
-    integer,  intent(in)  :: nu, nv, nsweeps
+                             swept_w, window, q0, alpha, dev)
+    integer,  intent(in)  :: nu, nv, nsweeps, window
     real(dp), intent(in)  :: a(3,nu), b(3,nu), ap(3,nu), bp(3,nu), R, mu, gamma
+    real(dp), intent(in)  :: swept_w
     real(dp), intent(out) :: q0(3,nu), alpha(3,nu), dev(nu)
     integer  :: i, sw, lo, hi
     real(dp) :: anb(3), qnb(3), e
     ctx_gamma = gamma
+
+    ! swept-overcut penalty context (the optimizer can now reduce cross-station
+    ! interference, not just the per-ruling deviation)
+    if (allocated(ctx_aa)) deallocate(ctx_aa, ctx_bb)
+    allocate(ctx_aa(3,nu), ctx_bb(3,nu)); ctx_aa = a; ctx_bb = b
+    ctx_window = window
 
     ! initialise from two-point
     do i = 1, nu
@@ -67,10 +80,12 @@ contains
           anb = unit3(alpha(:,lo) + alpha(:,hi))
           qnb = 0.5_dp * (q0(:,lo) + q0(:,hi))
         end if
+        ctx_idx = i; ctx_swept_w = swept_w   ! enable swept penalty for ruling i
         call refine_seeded(a(:,i), b(:,i), R, nv, alpha(:,i), q0(:,i), mu, &
                            anb, qnb, q0(:,i), alpha(:,i), e)
       end do
     end do
+    ctx_swept_w = 0.0_dp
 
     ! report pure peak deviation per ruling
     do i = 1, nu
@@ -234,7 +249,35 @@ contains
       f = f + ctx_mu * ( dot3(alpha - ctx_alpha_nb, alpha - ctx_alpha_nb) &
                   + ctx_wq * dot3(q0 - ctx_q0_nb, q0 - ctx_q0_nb) / ctx_R**2 )
     end if
+    ! swept-overcut penalty: discourage this axis from reaching radially inside
+    ! neighbouring rulings' surface (scaled by R so it stays dimensionless)
+    if (ctx_swept_w > 0.0_dp .and. allocated(ctx_aa)) then
+      f = f + ctx_swept_w * swept_penalty(q0, unit3(alpha))
+    end if
   end function objval
+
+  !> Sum of radial overcut (R - dist) of the given axis into neighbouring
+  !> rulings' surface points, over a +/- ctx_window index window. Normalised by R.
+  function swept_penalty(q0, ahat) result(pen)
+    real(dp), intent(in) :: q0(3), ahat(3)
+    real(dp) :: pen, ptn(3), wn(3), dn, vv
+    integer  :: j, m, jlo, jhi, nfull
+    integer, parameter :: npen = 9
+    pen = 0.0_dp
+    nfull = size(ctx_aa, 2)
+    jlo = max(1, ctx_idx - ctx_window)
+    jhi = min(nfull, ctx_idx + ctx_window)
+    do j = jlo, jhi
+      if (j == ctx_idx) cycle
+      do m = 1, npen
+        vv = real(m - 1, dp) / real(npen - 1, dp)
+        ptn = (1.0_dp - vv) * ctx_aa(:, j) + vv * ctx_bb(:, j)
+        wn = ptn - q0
+        dn = norm3(wn - dot3(wn, ahat) * ahat)
+        if (dn < ctx_R) pen = pen + (ctx_R - dn) / ctx_R
+      end do
+    end do
+  end function swept_penalty
 
   subroutine nelder_mead(x, n, maxiter, fbest, step)
     integer, intent(in)    :: n, maxiter

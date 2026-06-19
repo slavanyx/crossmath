@@ -32,6 +32,8 @@ class Params:
     mu: float = 1.0             # global-optimizer smoothness weight (dimensionless)
     gamma: float = 0.0          # tool taper half-angle (rad); 0 = cylinder
     nsweeps: int = 3
+    swept_weight: float = 0.0   # global-optimizer swept-overcut penalty (0 = off)
+    swept_window: int = 8       # neighbour index half-width for swept penalty
     collision_substeps: int = 2  # swept-motion sampling between stations
     rails: tuple = None         # optional (a, b) override for external blades
     # machine + process
@@ -180,7 +182,9 @@ def compute(p: Params) -> dict:
     res = optimize.optimize_blade(a, b, ap, bp, p.R, nv=p.nv,
                                   smooth_window=p.smooth_window,
                                   mu=p.mu, gamma=p.gamma, nsweeps=p.nsweeps,
-                                  strategy=p.strategy)
+                                  strategy=p.strategy,
+                                  swept_w=p.swept_weight,
+                                  swept_window=p.swept_window)
     sel = res[p.strategy]
     q0 = sel["q0"]; alpha = sel["alpha"]; dev = sel["dev"]
 

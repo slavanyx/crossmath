@@ -52,7 +52,7 @@ _lib.bc_refine_minmax.argtypes = [_DBL, _DBL, _DBL, _DBL, c_double, c_int,
                                   _DBL, _DBL, _DBL]
 _lib.bc_optimize_global.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int, c_double,
                                     c_int, c_double, c_double, c_int,
-                                    _DBL, _DBL, _DBL]
+                                    c_double, c_int, _DBL, _DBL, _DBL]
 _lib.bc_optimize_double_flank.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int,
                                           c_double, c_int, c_double, c_double,
                                           c_int, _DBL, _DBL, _DBL, _DBL]
@@ -140,11 +140,13 @@ def refine_minmax(a_pt, ap, b_pt, bp, R: float, nv: int = 41):
 
 
 def optimize_global(a, b, ap, bp, R: float, nv: int = 41,
-                    mu: float = 1.0, gamma: float = 0.0, nsweeps: int = 3):
-    """Global envelope optimization over the whole blade (joint accuracy +
-    smoothness). Rails a,b,ap,bp are (nu,3). Returns (q0[nu,3], alpha[nu,3],
-    dev[nu]). mu is the smoothness penalty weight (mu=0 reduces to per-ruling
-    min-max); gamma is the tool taper half-angle in radians (0 = cylinder).
+                    mu: float = 1.0, gamma: float = 0.0, nsweeps: int = 3,
+                    swept_w: float = 0.0, window: int = 8):
+    """Global envelope optimization over the whole blade. Rails a,b,ap,bp are
+    (nu,3). Returns (q0[nu,3], alpha[nu,3], dev[nu]). mu = smoothness weight
+    (0 -> per-ruling min-max); gamma = tool taper (rad); swept_w = weight on the
+    swept-overcut penalty (>0 reduces cross-station interference at some cost to
+    per-ruling deviation), window = neighbour index half-width for that penalty.
     """
     a = _c(a); b = _c(b); ap = _c(ap); bp = _c(bp)
     nu = a.shape[0]
@@ -153,7 +155,8 @@ def optimize_global(a, b, ap, bp, R: float, nv: int = 41,
     dev = np.empty(nu, dtype=np.float64)
     _lib.bc_optimize_global(_ptr(a), _ptr(b), _ptr(ap), _ptr(bp), c_int(nu),
                             c_double(R), c_int(nv), c_double(mu), c_double(gamma),
-                            c_int(nsweeps), _ptr(q0), _ptr(alpha), _ptr(dev))
+                            c_int(nsweeps), c_double(swept_w), c_int(window),
+                            _ptr(q0), _ptr(alpha), _ptr(dev))
     return q0, alpha, dev
 
 
