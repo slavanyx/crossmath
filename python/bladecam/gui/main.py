@@ -60,6 +60,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(filem, "Load tool-tip FRF (CSV)…", self.load_frf)
         self._act(filem, "Use parametric blade", self.use_parametric)
         filem.addSeparator()
+        self._act(filem, "Compute double-flank channel", self.show_double_flank)
+        filem.addSeparator()
         self._act(filem, "Export blade STL…", self.export_stl)
         self._act(filem, "Export rails CSV…", self.export_rails)
         self._act(filem, "Save G-code…", self.save_gcode)
@@ -326,6 +328,32 @@ class MainWindow(QtWidgets.QMainWindow):
         self.model.frf = None
         self._overlay = None
         self.recompute(compare=True)
+
+    def show_double_flank(self):
+        """One-shot double-flank channel view: both walls coloured by deviation
+        with the single tool tangent to both."""
+        from ..pipeline import double_flank_channel
+        r = double_flank_channel(self.model.build_params())
+        self.plotter.clear()
+        for surf, dev, nm in ((r["surfL"], r["devL"], "L"),
+                              (r["surfR"], r["devR"], "R")):
+            nu, nv, _ = surf.shape
+            g = pv.StructuredGrid()
+            g.points = surf.reshape(-1, 3); g.dimensions = (nv, nu, 1)
+            g["dev_um"] = np.repeat(dev, nv) * 1000.0
+            self.plotter.add_mesh(g, scalars="dev_um", cmap="coolwarm",
+                                  name=f"wall_{nm}")
+        q0, al = r["q0"], r["alpha"]
+        for i in range(0, q0.shape[0], max(1, q0.shape[0] // 12)):
+            cyl = pv.Cylinder(center=q0[i] + al[i]*15, direction=al[i],
+                              radius=self.model.values["R"], height=30)
+            self.plotter.add_mesh(cyl, color="#d4af37", opacity=0.4,
+                                  name=f"tool_{i}")
+        self.plotter.reset_camera()
+        self._overlay = None
+        self.status.showMessage(
+            f"double-flank channel: wall-L max {r['devL'].max()*1000:.1f}µm, "
+            f"wall-R max {r['devR'].max()*1000:.1f}µm")
 
     def import_cad(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(

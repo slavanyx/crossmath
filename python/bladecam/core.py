@@ -53,6 +53,9 @@ _lib.bc_refine_minmax.argtypes = [_DBL, _DBL, _DBL, _DBL, c_double, c_int,
 _lib.bc_optimize_global.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int, c_double,
                                     c_int, c_double, c_double, c_int,
                                     _DBL, _DBL, _DBL]
+_lib.bc_optimize_double_flank.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int,
+                                          c_double, c_int, c_double, c_double,
+                                          c_int, _DBL, _DBL, _DBL, _DBL]
 _lib.bc_ik_path.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
@@ -176,6 +179,21 @@ def stability_lobes_frf(freq, reG, imG, Kt: float, n_teeth: int = 4,
                                 c_double(Kt), c_int(n_teeth), c_int(nlobes),
                                 _ptr(rpm), _ptr(alim))
     return rpm, alim
+
+
+def optimize_double_flank(aL, bL, aR, bR, R: float, nv: int = 41,
+                          mu: float = 30.0, gamma: float = 0.0, nsweeps: int = 4):
+    """Double-flank channel milling: one cylinder tangent to both walls.
+    aL,bL and aR,bR are (nu,3). Returns (q0[nu,3], alpha[nu,3], devL[nu], devR[nu])."""
+    aL = _c(aL); bL = _c(bL); aR = _c(aR); bR = _c(bR)
+    nu = aL.shape[0]
+    q0 = np.empty((nu, 3)); alpha = np.empty((nu, 3))
+    devL = np.empty(nu); devR = np.empty(nu)
+    _lib.bc_optimize_double_flank(_ptr(aL), _ptr(bL), _ptr(aR), _ptr(bR),
+                                  c_int(nu), c_double(R), c_int(nv), c_double(mu),
+                                  c_double(gamma), c_int(nsweeps),
+                                  _ptr(q0), _ptr(alpha), _ptr(devL), _ptr(devR))
+    return q0, alpha, devL, devR
 
 
 def ik_path(Q: np.ndarray, O: np.ndarray, pivot) -> np.ndarray:

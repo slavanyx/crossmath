@@ -50,6 +50,27 @@ def _seg_distance(points, p0, p1):
     return np.linalg.norm(points - proj, axis=1)
 
 
+def double_flank_channel(p: Params) -> dict:
+    """Double-flank channel milling: one cylinder finishes both walls of the
+    flow channel (this blade's wall and the adjacent blade's facing wall) in a
+    single pass. Returns axes, per-wall deviation, and both wall surfaces."""
+    if p.rails is not None:
+        a, b = np.ascontiguousarray(p.rails[0]), np.ascontiguousarray(p.rails[1])
+    else:
+        a, b = blade.make_blade(p.nu, p.r_hub, p.r_shroud, p.z_span,
+                                p.z_offset, p.wrap, p.twist)
+    pitch = 2.0 * np.pi / p.n_blades
+    c, s = np.cos(pitch), np.sin(pitch)
+    Rz = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    aR, bR = a @ Rz.T, b @ Rz.T                      # adjacent blade's wall
+    q0, alpha, devL, devR = core.optimize_double_flank(
+        a, b, aR, bR, p.R, nv=p.nv, mu=p.mu, gamma=p.gamma, nsweeps=p.nsweeps)
+    nvg = 30
+    return dict(q0=q0, alpha=alpha, devL=devL, devR=devR,
+                surfL=blade.surface(a, b, nvg), surfR=blade.surface(aR, bR, nvg),
+                aL=a, bL=b, aR=aR, bR=bR)
+
+
 def compute(p: Params) -> dict:
     if p.rails is not None:
         a, b = np.ascontiguousarray(p.rails[0]), np.ascontiguousarray(p.rails[1])
