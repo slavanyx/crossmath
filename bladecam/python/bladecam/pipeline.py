@@ -6,7 +6,7 @@ demo and the GUI, so the GUI stays a thin presentation layer.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import numpy as np
 
 from . import core, blade, optimize
@@ -37,6 +37,59 @@ class Params:
     machine: MachineLimits = field(default_factory=MachineLimits)
     process: ProcessParams = field(default_factory=ProcessParams)
     pivot: tuple = (0.0, 0.0, -100.0)
+
+
+def _blade_rails(p: Params):
+    if p.rails is not None:
+        return (np.ascontiguousarray(p.rails[0]),
+                np.ascontiguousarray(p.rails[1]))
+    return blade.make_blade(p.nu, p.r_hub, p.r_shroud, p.z_span,
+                            p.z_offset, p.wrap, p.twist)
+
+
+def stacked_flank_passes(p: Params) -> dict:
+    """Split a blade taller than the usable flute into stacked flank passes.
+
+    Each pass machines a v-band [v0,v1] of the ruling (a thinner sub-strip), so
+    the engaged ruling fits the flute AND the per-band twist error is smaller
+    than a single full-height pass. Returns per-pass deviation/cycle and totals.
+    """
+    a, b = _blade_rails(p)
+    height = float(np.mean(np.linalg.norm(b - a, axis=1)))
+    n = max(1, int(np.ceil(height / p.process.flute_len)))
+    vb = np.linspace(0.0, 1.0, n + 1)
+    passes = []
+    for k in range(n):
+        v0, v1 = vb[k], vb[k + 1]
+        ab = (1 - v0) * a + v0 * b
+        bb = (1 - v1) * a + v1 * b
+        r = compute(replace(p, rails=(ab, bb)))
+        passes.append(dict(v0=float(v0), v1=float(v1),
+                           dev=r["dev"], cycle_s=r["cycle_time_s"]))
+    return dict(n_passes=n, blade_height=height, passes=passes,
+                dev_max=max(pp["dev"].max() for pp in passes),
+                cycle_total_s=sum(pp["cycle_s"] for pp in passes))
+
+
+def roughing_time_estimate(p: Params, ap: float = 3.0, ae_frac: float = 0.4,
+                           stock_mm: float = 2.0) -> dict:
+    """First-order channel-roughing cycle-time estimate: removed volume / MRR.
+
+    Volume ~ channel cross-section (pitch gap x blade height) x blade length;
+    MRR = ap * ae * feed. This is a planning estimate, not a toolpath.
+    """
+    a, b = _blade_rails(p)
+    height = float(np.mean(np.linalg.norm(b - a, axis=1)))
+    length = float(np.sum(np.linalg.norm(np.diff(0.5*(a + b), axis=0), axis=1)))
+    rmid = 0.5 * (p.r_hub + p.r_shroud)
+    gap = max(0.0, 2.0 * np.pi * rmid / p.n_blades - 2.0 * p.R)   # channel width
+    volume = gap * height * length * 0.5                          # ~half = stock
+    ae = ae_frac * 2.0 * p.R
+    feed = p.process.effective_feed_mm_min()
+    mrr = ap * ae * feed                                          # mm^3/min
+    minutes = volume / mrr if mrr > 0 else float("inf")
+    return dict(removed_volume_mm3=volume, mrr_mm3_min=mrr,
+                rough_time_s=minutes * 60.0, channel_gap_mm=gap)
 
 
 def double_flank_channel(p: Params) -> dict:

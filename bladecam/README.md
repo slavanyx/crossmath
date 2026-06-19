@@ -165,10 +165,20 @@ matplotlib):
   face's actual boundary edges (rails = the curved pair). Recovers a curved
   trimmed shroud to ~0.1 mm where the UV-box method erred by ~7 mm.
 
+**Phase 10 (Tier 1, cont.): process planning**
+- **Stacked flank passes** (`pipeline.stacked_flank_passes`): blades taller than
+  the usable flute are split into v-band passes (each a sub-strip optimised by
+  the full pipeline); reports per-pass deviation and total finishing cycle.
+- **Roughing time estimate** (`pipeline.roughing_time_estimate`): first-order
+  channel removed-volume / MRR planning figure (estimate, not a toolpath).
+- GUI "Process plan (stacked + roughing)".
+
 ## Roadmap
 
-- Roughing (channel bulk removal) and leading/trailing-edge + hub-fillet passes.
+- Real roughing/edge/fillet TOOLPATHS (current roughing is a time estimate;
+  leading/trailing-edge and hub-fillet finishing need point-milling ops).
 - 5-axis post-processor variants (head-head, head-table kinematics; RTCP).
 - Full machine-envelope / swept-volume verification.
+- End-to-end validation on an industrial impeller STEP + reference-CAM compare.
 
 See the design notes for the governing formulas behind each phase.
