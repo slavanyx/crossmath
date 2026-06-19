@@ -62,6 +62,19 @@ PYTHONPATH=. python -m bladecam.viewer         # 3D GUI
 
 Set `BLADECAM_LIB=/path/to/libbladecam.so` to point at the library explicitly.
 
+## Packaging (desktop bundle)
+
+```bash
+cmake -S bladecam -B bladecam/build && cmake --build bladecam/build -j   # core
+cd bladecam/python
+pip install -e ".[gui,cad,pkg]"
+pyinstaller bladecam_gui.spec        # -> dist/bladecam/ (libbladecam bundled)
+```
+
+Console entry points (after `pip install -e .`): `bladecam-gui`,
+`bladecam-demo`, `bladecam-benchmark`. CI builds the core and runs the test
+suites on Linux and macOS (`.github/workflows/bladecam.yml`).
+
 ## Implemented
 
 **Phase 0-1 (geometry core)**
