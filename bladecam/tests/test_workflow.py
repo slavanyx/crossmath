@@ -55,6 +55,13 @@ def main():
     check(all(v in valid_tabs for v in workflow.STAGE_CHART.values()),
           "STAGE_CHART points at real analysis tabs")
 
+    # tool-sweep animation flags: cover every stage; geometry is static
+    check(set(workflow.STAGE_ANIMATE) == set(workflow.STAGE_KEYS),
+          "STAGE_ANIMATE covers exactly the stages")
+    check(workflow.STAGE_ANIMATE["geometry"] is False
+          and workflow.STAGE_ANIMATE["positioning"] is True,
+          "STAGE_ANIMATE: geometry static, motion stages animated")
+
     for sc in scenes:
         ok = bool(sc["title"]) and bool(sc["blurb"]) and len(sc["meshes"]) >= 1
         check(ok, f"stage '{sc['key']}' has title/blurb/meshes")

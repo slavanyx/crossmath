@@ -290,6 +290,9 @@ class MainWindow(QtWidgets.QMainWindow):
         chart = workflow.STAGE_CHART.get(scene["key"])
         if chart in self.canvases:
             self.tabs.setCurrentWidget(self.canvases[chart])
+        # show the cutter on the staged scene so Play sweeps it through this step
+        if workflow.STAGE_ANIMATE.get(scene["key"]):
+            self._show_tool_at(self.anim_slider.value())
 
     def _render_scene(self, scene):
         """Translate a renderer-agnostic workflow scene into PyVista actors."""

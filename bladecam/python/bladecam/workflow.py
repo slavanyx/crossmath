@@ -35,6 +35,16 @@ STAGES = [
 
 STAGE_KEYS = tuple(k for k, *_ in STAGES)
 
+# stages where animating the cutter sweeping along the path is meaningful
+# (geometry is the static design surface; everything after involves the tool)
+STAGE_ANIMATE = {
+    "geometry":     False,
+    "positioning":  True,
+    "kinematics":   True,
+    "feed":         True,
+    "verification": True,
+}
+
 # the bottom analysis tab most relevant to each stage, so stepping the workflow
 # also brings the matching chart forward (names match the GUI's tab labels)
 STAGE_CHART = {
