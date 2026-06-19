@@ -13,7 +13,7 @@ module bladecam_capi
   use kinematics_mod, only: inverse_kin_ac
   use topp_mod, only: topp_ra
   use chatter_mod, only: stability_lobes, stability_lobes_frf
-  use collision_mod, only: tool_clearance
+  use collision_mod, only: tool_clearance, swept_clearance
   implicit none
 
 contains
@@ -153,5 +153,15 @@ contains
     real(c_double), intent(out) :: clr(nu)
     call tool_clearance(q0, alpha, R, Lf, Rh, gap, Lh, nu, pts, npts, clr)
   end subroutine bc_tool_clearance
+
+  !> Continuous swept-volume clearance over each motion segment [i,i+1].
+  subroutine bc_swept_clearance(q0, alpha, R, Lf, Rh, gap, Lh, nu, pts, npts, &
+                                nscan, clr) bind(C, name="bc_swept_clearance")
+    integer(c_int), value :: nu, npts, nscan
+    real(c_double), intent(in)  :: q0(3,nu), alpha(3,nu), pts(3,npts)
+    real(c_double), value       :: R, Lf, Rh, gap, Lh
+    real(c_double), intent(out) :: clr(nu)
+    call swept_clearance(q0, alpha, R, Lf, Rh, gap, Lh, nu, pts, npts, nscan, clr)
+  end subroutine bc_swept_clearance
 
 end module bladecam_capi

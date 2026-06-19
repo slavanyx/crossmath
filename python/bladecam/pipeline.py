@@ -210,12 +210,12 @@ def compute(p: Params) -> dict:
     flat = surf.reshape(-1, 3)
     pitch = 2.0 * np.pi / p.n_blades
     obstacles = np.vstack([flat @ _rotz(pitch).T, flat @ _rotz(-pitch).T])
-    # swept check: densify tool poses between stations so a mid-move collision
-    # isn't missed (per-station-only checking can clear both endpoints yet gouge
-    # the neighbour in between).
-    q0d, ad = _densify_poses(q0, alpha, p.collision_substeps)
-    clr = core.tool_clearance(q0d, ad, obstacles, p.R, pr.flute_len,
-                              pr.holder_dia * 0.5, pr.holder_gap, pr.holder_len)
+    # continuous swept-volume check: the tool+holder clearance is minimised over
+    # the WHOLE motion between consecutive stations (not just sampled sub-poses),
+    # so a mid-move collision can't slip between samples.
+    clr = core.swept_clearance(q0, alpha, obstacles, p.R, pr.flute_len,
+                               pr.holder_dia * 0.5, pr.holder_gap, pr.holder_len,
+                               nscan=max(4, 2 * p.collision_substeps))
     min_clear = float(clr.min())
     collision_free = bool(min_clear > 0.0)
     gouge_max = float(max(0.0, -devfield.min()))   # per-station depth past the design surface

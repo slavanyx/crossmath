@@ -58,6 +58,19 @@ def main():
     check(swept < 0, "swept check catches the mid-move collision",
           f"({swept:.2f} mm)")
 
+    # CONTINUOUS swept-volume clearance: minimises over the whole motion, so it
+    # must catch the same mid-move gouge AND be no less conservative than dense
+    # pose sampling (continuous min <= sampled min).
+    cont = core.swept_clearance(q0, al, obst, *args, nscan=12)
+    check(cont[0] < 0, "continuous swept-volume catches mid-move gouge",
+          f"({cont[0]:.2f} mm)")
+    check(cont.min() <= swept + 1e-6,
+          "continuous swept-volume no less conservative than sampling",
+          f"(cont {cont.min():.3f} <= sampled {swept:.3f})")
+    # last entry is the final static clearance (matches per-station there)
+    stat_last = core.tool_clearance(q0[-1:], al[-1:], obst, *args)[0]
+    check(abs(cont[-1] - stat_last) < 1e-6, "continuous last entry = static clearance")
+
     # pipeline: a very tight blade count collides; a generous one is clear
     tight = compute(Params(strategy="global", n_blades=38))
     loose = compute(Params(strategy="global", n_blades=6))
