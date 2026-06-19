@@ -224,6 +224,10 @@ def compute(p: Params) -> dict:
     Lflute = np.linalg.norm(b - a, axis=1)
     swept = core.swept_deviation(q0, alpha, Lflute, p.R, surf.reshape(-1, 3))
     swept_overcut = float(max(0.0, -swept.min()))
+    # full per-point swept (machined-surface) error field, so the 3D view can
+    # colour the surface by the REAL envelope error rather than the per-station
+    # residual (which is ~0 for a cylinder on an exact ruled surface)
+    swept_field = swept.reshape(surf.shape[0], surf.shape[1])
 
     # --- Phase 4: time-optimal feed ---
     # contact-path arc length as an extra DOF carrying the process feed cap
@@ -245,6 +249,7 @@ def compute(p: Params) -> dict:
         machine_path=m, aprof=aprof, cycle_time_s=cycle_s,
         min_clearance=min_clear, collision_free=collision_free,
         gouge_max=gouge_max, swept_overcut=swept_overcut, clearance=clr,
+        swept_field=swept_field,
         orient_jerk=optimize.orientation_jerk(alpha),
         contact=contact, seglen=seglen, move_times_s=move_times,
         feed_cap_mm_min=feed_cap,

@@ -186,9 +186,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_chart("Feed", charts.feed_chart, r["seglen"], r["aprof"])
         self._update_chatter()
         coll = "OK" if r["collision_free"] else "COLLISION"
+        # headline the swept (machined-surface) error: it is the real envelope
+        # error a user cares about. Per-ruling "dev" is the contact-line residual
+        # and is ~0 for a cylinder on an exact ruled surface, so it would mislead
+        # as the headline accuracy.
         self.status.showMessage(
-            f"cycle {r['cycle_time_s']:.2f}s   peak dev "
-            f"{r['dev'].max()*1000:.1f}µm   clearance "
+            f"cycle {r['cycle_time_s']:.2f}s   surface err "
+            f"{r.get('swept_overcut', 0.0)*1000:.1f}µm   clearance "
             f"{r['min_clearance']:.2f}mm  [{coll}]")
 
     def _on_compare(self, stats):
@@ -215,8 +219,19 @@ class MainWindow(QtWidgets.QMainWindow):
         surf = r["surf"]; nu, nv, _ = surf.shape
         cam = self.plotter.camera_position
         self.plotter.clear()
-        self._dev_surface(surf, r["devfield"] * 1000.0,
-                          scalar_bar_args={"title": "dev (µm)"})
+        # colour by the REAL machined-surface error: swept-envelope overcut depth
+        # (max(0,-swept)), which is what the cutter actually removes past the
+        # design surface. Far-field clearance is positive and huge, so we show
+        # overcut depth, not signed swept distance. Fall back to the per-station
+        # residual only if the swept field is unavailable.
+        sf = r.get("swept_field")
+        if sf is not None:
+            field_um = np.maximum(0.0, -sf) * 1000.0
+            title = "surface err (µm)"
+        else:
+            field_um = r["devfield"] * 1000.0
+            title = "dev (µm)"
+        self._dev_surface(surf, field_um, scalar_bar_args={"title": title})
         self.plotter.add_mesh(pv.lines_from_points(r["strict"]),
                               color="lime", line_width=3)
         q0, al = r["q0"], r["alpha"]
@@ -265,18 +280,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.anim_slider.setValue(v)
 
     def _fill_results(self, r):
+        # primary accuracy = machined-surface (swept-envelope) error; the
+        # per-ruling deviation is the contact-line residual (≈0 for a cylinder
+        # on an exact ruled surface), shown for diagnostics, not as the headline.
         rows = [
             ("strategy", self.model.strategy),
-            ("peak deviation", f"{r['dev'].max()*1000:.1f} µm"),
-            ("mean deviation", f"{r['dev'].mean()*1000:.1f} µm"),
+            ("machined-surface error (swept)",
+             f"{r.get('swept_overcut', 0.0)*1000:.1f} µm"),
+            ("gouge depth (per station)", f"{r.get('gouge_max', 0.0)*1000:.1f} µm"),
+            ("contact-line residual (peak)", f"{r['dev'].max()*1000:.1f} µm"),
+            ("contact-line residual (mean)", f"{r['dev'].mean()*1000:.1f} µm"),
             ("orientation jerk", f"{r['orient_jerk']:.3f}"),
             ("cycle time", f"{r['cycle_time_s']:.2f} s"),
             ("path length", f"{r['path_len_mm']:.1f} mm"),
             ("feed cap", f"{r['feed_cap_mm_min']:.0f} mm/min"),
             ("min clearance", f"{r['min_clearance']:.2f} mm"),
             ("collision-free", str(r["collision_free"])),
-            ("gouge depth", f"{r.get('gouge_max', 0.0)*1000:.1f} µm"),
-            ("swept overcut", f"{r.get('swept_overcut', 0.0)*1000:.1f} µm"),
         ]
         self.results_tbl.setRowCount(len(rows))
         for i, (k, v) in enumerate(rows):
