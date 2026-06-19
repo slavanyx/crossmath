@@ -58,7 +58,7 @@ _lib.bc_optimize_double_flank.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int,
                                           c_int, _DBL, _DBL, _DBL, _DBL]
 _lib.bc_tool_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
                                    c_double, c_double, c_int, _DBL, c_int, _DBL]
-_lib.bc_ik_path.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL]
+_lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
 _lib.bc_stability_lobes.argtypes = [c_double, c_double, c_double, c_double,
@@ -210,14 +210,14 @@ def tool_clearance(q0, alpha, pts, R, flute_len, holder_R, gap, holder_len):
     return clr
 
 
-def ik_path(Q: np.ndarray, O: np.ndarray, pivot) -> np.ndarray:
+def ik_path(Q: np.ndarray, O: np.ndarray, pivot, kind: int = 0) -> np.ndarray:
     """Batch 5-axis inverse kinematics. Q, O are (npts, 3) contact points and
     tool axes; returns machine axes (npts, 5) = [X, Y, Z, A, C] (A, C radians).
-    """
+    kind: 0 = table-table (workpiece rotates), 1 = head-head (spindle tilts)."""
     Q = _c(Q); O = _c(O); pivot = _c(pivot)
     npts = Q.shape[0]
     m = np.empty((npts, 5), dtype=np.float64)
-    _lib.bc_ik_path(_ptr(Q), _ptr(O), c_int(npts), _ptr(pivot), _ptr(m))
+    _lib.bc_ik_path(c_int(kind), _ptr(Q), _ptr(O), c_int(npts), _ptr(pivot), _ptr(m))
     return m
 
 

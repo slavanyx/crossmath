@@ -12,6 +12,7 @@ class MachineLimits:
     a_lin: float = 800.0     # mm/s^2
     v_rot: float = 0.6       # rad/s  (~34 deg/s -- typical 5-axis rotary)
     a_rot: float = 6.0       # rad/s^2
+    kind: int = 0            # 0 = table-table, 1 = head-head (spindle tilt)
 
     def vmax(self):
         return [self.v_lin, self.v_lin, self.v_lin, self.v_rot, self.v_rot]

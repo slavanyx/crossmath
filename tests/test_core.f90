@@ -139,10 +139,17 @@ contains
     piv = [0.0_dp, 0.0_dp, -50.0_dp]
     Q = [12.0_dp, -7.0_dp, 30.0_dp]
     O = unit3([0.3_dp, 0.4_dp, 0.866_dp])
-    call inverse_kin_ac(Q, O, piv, m)
-    call forward_kin_ac(m, piv, Q2, O2)
-    call check(norm3(Q2 - Q) < 1.0e-9_dp, "IK round-trip: point", nfail)
-    call check(norm3(O2 - O) < 1.0e-9_dp, "IK round-trip: axis", nfail)
+    ! table-table (kind 0)
+    call inverse_kin_ac(0, Q, O, piv, m)
+    call forward_kin_ac(0, m, piv, Q2, O2)
+    call check(norm3(Q2 - Q) < 1.0e-9_dp, "IK table-table round-trip: point", nfail)
+    call check(norm3(O2 - O) < 1.0e-9_dp, "IK table-table round-trip: axis", nfail)
+    ! head-head (kind 1): point passes through unchanged
+    call inverse_kin_ac(1, Q, O, piv, m)
+    call check(norm3(m(1:3) - Q) < 1.0e-12_dp, "IK head-head: linear = contact point", nfail)
+    call forward_kin_ac(1, m, piv, Q2, O2)
+    call check(norm3(Q2 - Q) < 1.0e-9_dp .and. norm3(O2 - O) < 1.0e-9_dp, &
+               "IK head-head round-trip", nfail)
   end subroutine test_ik_roundtrip
 
   !> TOPP on a single straight axis of length Lp with symmetric accel should
