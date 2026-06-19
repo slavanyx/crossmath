@@ -197,8 +197,10 @@ contains
         ap(:,i) = 0.5_dp*(a(:,i+1)-a(:,i-1)); bp(:,i) = 0.5_dp*(b(:,i+1)-b(:,i-1))
       end if
     end do
-    call optimize_global(a, b, ap, bp, nu, R, nv, 0.0_dp,  0.0_dp, 3, 0.0_dp, 0, q0, al0, dev0)
-    call optimize_global(a, b, ap, bp, nu, R, nv, 20.0_dp, 0.0_dp, 6, 0.0_dp, 0, q0, alm, devm)
+    call optimize_global(a, b, ap, bp, nu, R, nv, 0.0_dp,  0.0_dp, 3, 0.0_dp, 0, &
+                         0.0_dp, 0.0_dp, q0, al0, dev0)
+    call optimize_global(a, b, ap, bp, nu, R, nv, 20.0_dp, 0.0_dp, 6, 0.0_dp, 0, &
+                         0.0_dp, 0.0_dp, q0, alm, devm)
     ! mu=0 reaches the (near-exact) per-ruling optimum on this ruled blade; the
     ! smoothness penalty is a bounded accuracy trade, not a free lunch.
     call check(maxval(dev0) < 0.05_dp, "global mu=0 reaches near-optimal accuracy", nfail)

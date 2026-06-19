@@ -31,6 +31,8 @@ class Params:
     smooth_window: int = 5
     mu: float = 1.0             # global-optimizer smoothness weight (dimensionless)
     gamma: float = 0.0          # tool taper half-angle (rad); 0 = cylinder
+    barrel_R: float = 0.0       # barrel arc radius (0 = cylinder/cone tool)
+    barrel_pos: float = 0.0     # barrel widest-point axial position (mm from q0)
     nsweeps: int = 3
     swept_weight: float = 0.0   # global-optimizer swept-overcut penalty (0 = off)
     swept_window: int = 8       # neighbour index half-width for swept penalty
@@ -184,21 +186,27 @@ def compute(p: Params) -> dict:
                                   mu=p.mu, gamma=p.gamma, nsweeps=p.nsweeps,
                                   strategy=p.strategy,
                                   swept_w=p.swept_weight,
-                                  swept_window=p.swept_window)
+                                  swept_window=p.swept_window,
+                                  barrel_R=p.barrel_R, barrel_pos=p.barrel_pos)
     sel = res[p.strategy]
     q0 = sel["q0"]; alpha = sel["alpha"]; dev = sel["dev"]
 
-    # deviation field on the surface grid (for visualization).
-    # gamma applies only to the conical "global" tool; other strategies are
+    # deviation field on the surface grid (for visualization). The tool family
+    # (cone gamma / barrel) applies only to the "global" strategy; the others are
     # cylindrical, so the displayed field stays consistent with `dev`.
     eff_gamma = p.gamma if p.strategy == "global" else 0.0
+    eff_Rb = p.barrel_R if p.strategy == "global" else 0.0
     nv_grid = 30
     surf = blade.surface(a, b, nv_grid)
     v = np.linspace(0.0, 1.0, nv_grid)
     devfield = np.empty((nu, nv_grid))
     for i in range(nu):
         pts = (1.0 - v)[:, None] * a[i][None, :] + v[:, None] * b[i][None, :]
-        devfield[i] = core.deviation_cone(q0[i], alpha[i], p.R, eff_gamma, pts)
+        if eff_Rb > 0.0:
+            devfield[i] = core.deviation_barrel(q0[i], alpha[i], p.R, eff_Rb,
+                                                p.barrel_pos, pts)
+        else:
+            devfield[i] = core.deviation_cone(q0[i], alpha[i], p.R, eff_gamma, pts)
 
     # --- Phase 3: kinematics (contact point = mid-ruling) ---
     contact = 0.5 * (a + b)
@@ -231,7 +239,7 @@ def compute(p: Params) -> dict:
     # misses (real flank-milling overcut in twisted LE/TE regions)
     Lflute = np.linalg.norm(b - a, axis=1)
     swept = core.swept_deviation(q0, alpha, Lflute, p.R, surf.reshape(-1, 3),
-                                 gamma=eff_gamma)
+                                 gamma=eff_gamma, Rb=eff_Rb, lamc=p.barrel_pos)
     swept_overcut = float(max(0.0, -swept.min()))
     # full per-point swept (machined-surface) error field, so the 3D view can
     # colour the surface by the REAL envelope error rather than the per-station
@@ -240,8 +248,8 @@ def compute(p: Params) -> dict:
     # true swept-envelope SURFACE: the actual machined geometry (design grid
     # projected onto the nearest swept cutter), renderable as a (nu,nv,3) mesh
     envelope_surf = core.swept_surface(q0, alpha, Lflute, p.R,
-                                       surf.reshape(-1, 3),
-                                       gamma=eff_gamma).reshape(surf.shape)
+                                       surf.reshape(-1, 3), gamma=eff_gamma,
+                                       Rb=eff_Rb, lamc=p.barrel_pos).reshape(surf.shape)
 
     # --- Phase 4: time-optimal feed ---
     # contact-path arc length as an extra DOF carrying the process feed cap
