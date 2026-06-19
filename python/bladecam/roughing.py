@@ -29,11 +29,15 @@ def adaptive_rough(a, b, a2, b2, ap: float, stepover: float,
     a2 = np.asarray(a2, float); b2 = np.asarray(b2, float)
     height = float(np.mean(np.linalg.norm(b - a, axis=1)))
     midA = 0.5 * (a + b); midB = 0.5 * (a2 + b2)
-    gap = float(np.mean(np.linalg.norm(midB - midA, axis=1)))
+    wall_dist = np.linalg.norm(midB - midA, axis=1)
+    gap = float(np.mean(wall_dist))
+    gap_max = float(np.max(wall_dist))          # widest section
     length = _poly_len(midA)
 
     n_axial = max(1, int(np.ceil(height / ap)))
-    n_radial = max(1, int(np.ceil(gap / stepover)))
+    # size radial passes from the WIDEST section so the stepover (engagement)
+    # bound holds everywhere, not just on average.
+    n_radial = max(1, int(np.ceil(gap_max / stepover)))
 
     passes = []
     total = 0.0
@@ -51,4 +55,4 @@ def adaptive_rough(a, b, a2, b2, ap: float, stepover: float,
     cycle_s = (total / feed_mm_min) * 60.0 if feed_mm_min > 0 else float("inf")
     return dict(passes=passes, n_axial=n_axial, n_radial=n_radial,
                 total_len_mm=total, removed_volume_mm3=removed_volume,
-                cycle_s=cycle_s, channel_gap_mm=gap)
+                cycle_s=cycle_s, channel_gap_mm=gap, channel_gap_max_mm=gap_max)
