@@ -135,23 +135,23 @@ contains
   end subroutine bc_topp
 
   !> Swept-envelope deviation of design points vs the whole toolpath.
-  subroutine bc_swept_deviation(q0, alpha, Lflute, R, nu, pts, npts, g) &
+  subroutine bc_swept_deviation(q0, alpha, Lflute, R, gamma, nu, pts, npts, g) &
        bind(C, name="bc_swept_deviation")
     integer(c_int), value :: nu, npts
     real(c_double), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), pts(3,npts)
-    real(c_double), value       :: R
+    real(c_double), value       :: R, gamma
     real(c_double), intent(out) :: g(npts)
-    call swept_deviation(q0, alpha, Lflute, R, nu, pts, npts, g)
+    call swept_deviation(q0, alpha, Lflute, R, gamma, nu, pts, npts, g)
   end subroutine bc_swept_deviation
 
   !> True swept-envelope surface: machined point for each design point.
-  subroutine bc_swept_surface(q0, alpha, Lflute, R, nu, pts, npts, mpts) &
+  subroutine bc_swept_surface(q0, alpha, Lflute, R, gamma, nu, pts, npts, mpts) &
        bind(C, name="bc_swept_surface")
     integer(c_int), value :: nu, npts
     real(c_double), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), pts(3,npts)
-    real(c_double), value       :: R
+    real(c_double), value       :: R, gamma
     real(c_double), intent(out) :: mpts(3,npts)
-    call swept_surface(q0, alpha, Lflute, R, nu, pts, npts, mpts)
+    call swept_surface(q0, alpha, Lflute, R, gamma, nu, pts, npts, mpts)
   end subroutine bc_swept_surface
 
   !> Tool+holder clearance to an obstacle cloud, per station. clr(nu) < 0 means

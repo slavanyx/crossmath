@@ -84,6 +84,23 @@ def main():
           "machined displacement == |swept deviation|",
           f"(max diff {np.abs(disp - np.abs(g)).max():.2e})")
 
+    # conical tool: the swept metric must use the LOCAL tool radius, not a
+    # constant R. Points exactly on a cone surface must read ~0 overcut; the
+    # cylinder formula (gamma omitted) wrongly reports up to lam*tan(gamma).
+    Rc = 5.0; gam = np.radians(12.0)
+    qc = np.array([[0., 0, 0]]); ac = np.array([[0., 0, 1.]]); Lfc = np.array([40.0])
+    lam = np.array([0., 10., 20., 30.])
+    on_cone = np.column_stack([Rc + lam*np.tan(gam), 0*lam, lam])
+    gc = core.swept_deviation(qc, ac, Lfc, Rc, on_cone, gamma=gam)
+    gcyl = core.swept_deviation(qc, ac, Lfc, Rc, on_cone)   # gamma=0 (cylinder)
+    check(np.max(np.abs(gc)) < 1e-9, "conical swept ~0 on the cone surface",
+          f"(max {np.max(np.abs(gc)):.2e})")
+    check(np.max(np.abs(gcyl)) > 1.0, "cylinder formula mis-reads taper as overcut",
+          f"({np.max(np.abs(gcyl)):.2f} mm)")
+    envc = core.swept_surface(qc, ac, Lfc, Rc, on_cone, gamma=gam)
+    check(np.max(np.linalg.norm(envc - on_cone, axis=1)) < 1e-9,
+          "conical envelope surface lands on the cone")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)

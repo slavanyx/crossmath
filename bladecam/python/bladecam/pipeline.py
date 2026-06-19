@@ -230,7 +230,8 @@ def compute(p: Params) -> dict:
     # swept-envelope overcut: cross-station interference the per-station model
     # misses (real flank-milling overcut in twisted LE/TE regions)
     Lflute = np.linalg.norm(b - a, axis=1)
-    swept = core.swept_deviation(q0, alpha, Lflute, p.R, surf.reshape(-1, 3))
+    swept = core.swept_deviation(q0, alpha, Lflute, p.R, surf.reshape(-1, 3),
+                                 gamma=eff_gamma)
     swept_overcut = float(max(0.0, -swept.min()))
     # full per-point swept (machined-surface) error field, so the 3D view can
     # colour the surface by the REAL envelope error rather than the per-station
@@ -239,7 +240,8 @@ def compute(p: Params) -> dict:
     # true swept-envelope SURFACE: the actual machined geometry (design grid
     # projected onto the nearest swept cutter), renderable as a (nu,nv,3) mesh
     envelope_surf = core.swept_surface(q0, alpha, Lflute, p.R,
-                                       surf.reshape(-1, 3)).reshape(surf.shape)
+                                       surf.reshape(-1, 3),
+                                       gamma=eff_gamma).reshape(surf.shape)
 
     # --- Phase 4: time-optimal feed ---
     # contact-path arc length as an extra DOF carrying the process feed cap
