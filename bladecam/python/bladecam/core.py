@@ -140,7 +140,7 @@ def refine_minmax(a_pt, ap, b_pt, bp, R: float, nv: int = 41):
 
 
 def optimize_global(a, b, ap, bp, R: float, nv: int = 41,
-                    mu: float = 1.0, gamma: float = 0.0, nsweeps: int = 4):
+                    mu: float = 1.0, gamma: float = 0.0, nsweeps: int = 3):
     """Global envelope optimization over the whole blade (joint accuracy +
     smoothness). Rails a,b,ap,bp are (nu,3). Returns (q0[nu,3], alpha[nu,3],
     dev[nu]). mu is the smoothness penalty weight (mu=0 reduces to per-ruling
@@ -186,7 +186,7 @@ def stability_lobes_frf(freq, reG, imG, Kt: float, n_teeth: int = 4,
 
 
 def optimize_double_flank(aL, bL, aR, bR, R: float, nv: int = 41,
-                          mu: float = 1.0, gamma: float = 0.0, nsweeps: int = 4):
+                          mu: float = 1.0, gamma: float = 0.0, nsweeps: int = 3):
     """Double-flank channel milling: one cylinder tangent to both walls.
     aL,bL and aR,bR are (nu,3). Returns (q0[nu,3], alpha[nu,3], devL[nu], devR[nu])."""
     aL = _c(aL); bL = _c(bL); aR = _c(aR); bR = _c(bR)

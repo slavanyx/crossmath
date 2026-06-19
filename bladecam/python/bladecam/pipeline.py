@@ -31,7 +31,7 @@ class Params:
     smooth_window: int = 5
     mu: float = 1.0             # global-optimizer smoothness weight (dimensionless)
     gamma: float = 0.0          # tool taper half-angle (rad); 0 = cylinder
-    nsweeps: int = 4
+    nsweeps: int = 3
     collision_substeps: int = 2  # swept-motion sampling between stations
     rails: tuple = None         # optional (a, b) override for external blades
     # machine + process
