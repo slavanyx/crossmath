@@ -32,6 +32,7 @@ class Params:
     mu: float = 1.0             # global-optimizer smoothness weight (dimensionless)
     gamma: float = 0.0          # tool taper half-angle (rad); 0 = cylinder
     nsweeps: int = 4
+    collision_substeps: int = 2  # swept-motion sampling between stations
     rails: tuple = None         # optional (a, b) override for external blades
     # machine + process
     machine: MachineLimits = field(default_factory=MachineLimits)
@@ -51,6 +52,24 @@ def _rotz(ang: float) -> np.ndarray:
     """Rotation about the impeller (Z) axis."""
     c, s = np.cos(ang), np.sin(ang)
     return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
+def _densify_poses(q0, alpha, substeps):
+    """Insert `substeps` interpolated tool poses between consecutive stations so
+    collision checking covers the swept motion, not just the endpoints."""
+    if substeps <= 0:
+        return q0, alpha
+    nu = q0.shape[0]
+    qs, as_ = [], []
+    for i in range(nu - 1):
+        for s in range(substeps + 1):
+            t = s / (substeps + 1)
+            qs.append((1 - t) * q0[i] + t * q0[i + 1])
+            a = (1 - t) * alpha[i] + t * alpha[i + 1]
+            n = np.linalg.norm(a)
+            as_.append(a / n if n > 0 else alpha[i])
+    qs.append(q0[-1]); as_.append(alpha[-1])
+    return np.ascontiguousarray(qs), np.ascontiguousarray(as_)
 
 
 def _neighbour_walls(a, b, n_blades, k=1):
@@ -176,7 +195,11 @@ def compute(p: Params) -> dict:
     flat = surf.reshape(-1, 3)
     pitch = 2.0 * np.pi / p.n_blades
     obstacles = np.vstack([flat @ _rotz(pitch).T, flat @ _rotz(-pitch).T])
-    clr = core.tool_clearance(q0, alpha, obstacles, p.R, pr.flute_len,
+    # swept check: densify tool poses between stations so a mid-move collision
+    # isn't missed (per-station-only checking can clear both endpoints yet gouge
+    # the neighbour in between).
+    q0d, ad = _densify_poses(q0, alpha, p.collision_substeps)
+    clr = core.tool_clearance(q0d, ad, obstacles, p.R, pr.flute_len,
                               pr.holder_dia * 0.5, pr.holder_gap, pr.holder_len)
     min_clear = float(clr.min())
     collision_free = bool(min_clear > 0.0)
