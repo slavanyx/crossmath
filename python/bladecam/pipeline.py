@@ -143,6 +143,17 @@ def rough_channel(p: Params, ap: float = 3.0, stepover: float = None) -> dict:
                                    p.process.effective_feed_mm_min())
 
 
+def rough_channel_trochoidal(p: Params, ae_target: float = None) -> dict:
+    """Engagement-controlled trochoidal roughing of the flow channel."""
+    from . import roughing
+    a, b = _blade_rails(p)
+    a2, b2 = _neighbour_walls(a, b, p.n_blades)
+    if ae_target is None:
+        ae_target = 0.15 * 2.0 * p.R
+    return roughing.trochoidal_channel(a, b, a2, b2, p.R, ae_target,
+                                       p.process.effective_feed_mm_min())
+
+
 def double_flank_channel(p: Params) -> dict:
     """Double-flank channel milling: one cylinder finishes both walls of the
     flow channel (this blade's wall and the adjacent blade's facing wall) in a

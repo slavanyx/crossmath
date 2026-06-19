@@ -16,6 +16,59 @@ def _poly_len(poly: np.ndarray) -> float:
     return float(np.sum(np.linalg.norm(np.diff(poly, axis=0), axis=1)))
 
 
+def _interp_cols(s, pts, snew):
+    """Arc-length resample an (n,3) polyline at parameters snew."""
+    return np.column_stack([np.interp(snew, s, pts[:, c]) for c in range(3)])
+
+
+def trochoidal_channel(a, b, a2, b2, R, ae_target, feed_mm_min, circ_pts=24):
+    """Engagement-controlled trochoidal roughing along the channel centreline.
+
+    The tool follows forward-drifting circular loops; the advance per loop is set
+    to the target radial bite `ae_target`, so the radial width of cut -- and thus
+    the engagement angle acos(1 - ae/R) -- is bounded (unlike a full-width slot
+    pass at ~180 deg). Returns the coil path plus engagement/metrics.
+    """
+    a = np.asarray(a, float); b = np.asarray(b, float)
+    a2 = np.asarray(a2, float); b2 = np.asarray(b2, float)
+    midA = 0.5 * (a + b); midB = 0.5 * (a2 + b2)
+    centre = 0.5 * (midA + midB)
+    cross = midB - midA
+    halfw = 0.5 * np.linalg.norm(cross, axis=1)
+    height = float(np.mean(np.linalg.norm(b - a, axis=1)))
+
+    seg = np.linalg.norm(np.diff(centre, axis=0), axis=1)
+    s = np.concatenate([[0.0], np.cumsum(seg)])
+    L = float(s[-1])
+    # ceil(L/ae) intervals => advance per loop = L/intervals <= ae_target
+    n_loops = max(2, int(np.ceil(L / ae_target)) + 1)
+    sl = np.linspace(0.0, L, n_loops)
+
+    c_i = _interp_cols(s, centre, sl)
+    w_i = _interp_cols(s, cross, sl)
+    hw_i = np.interp(sl, s, halfw)
+    tang = np.gradient(c_i, axis=0)
+
+    pts = []
+    phis = np.linspace(0.0, 2.0 * np.pi, circ_pts, endpoint=False)
+    for k in range(n_loops):
+        t_hat = tang[k] / (np.linalg.norm(tang[k]) + 1e-12)
+        w = w_i[k] - (w_i[k] @ t_hat) * t_hat          # orthogonalise cross dir
+        w_hat = w / (np.linalg.norm(w) + 1e-12)
+        rho = max(0.0, float(hw_i[k]) - R)             # lateral room to loop
+        for ph in phis:
+            pts.append(c_i[k] + rho * (np.cos(ph) * w_hat + np.sin(ph) * t_hat))
+    coil = np.asarray(pts)
+
+    engagement_deg = float(np.degrees(np.arccos(np.clip(1.0 - ae_target / R, -1.0, 1.0))))
+    path_len = _poly_len(coil)
+    removed_volume = float(np.mean(2.0 * halfw) * height * L)
+    cycle_s = (path_len / feed_mm_min) * 60.0 if feed_mm_min > 0 else float("inf")
+    return dict(points=coil, engagement_deg=engagement_deg, n_loops=n_loops,
+                advance_mm=L / (n_loops - 1), path_len_mm=path_len,
+                removed_volume_mm3=removed_volume, cycle_s=cycle_s)
+
+
 def adaptive_rough(a, b, a2, b2, ap: float, stepover: float,
                    feed_mm_min: float):
     """Layered roughing between walls (a,b) and (a2,b2), each (nu,3).

@@ -89,6 +89,21 @@ def main():
     rc = rough_channel(Params(), ap=3.0)
     check(rc["total_len_mm"] > 0, "pipeline rough_channel runs")
 
+    # --- trochoidal roughing: bounded engagement angle ---
+    R = 6.0; ae = 1.5
+    tr = roughing.trochoidal_channel(a, b, a @ Rz.T, b @ Rz.T, R, ae,
+                                     feed_mm_min=3000.0)
+    import math
+    expect = math.degrees(math.acos(1 - ae / R))
+    check(abs(tr["engagement_deg"] - expect) < 1e-6,
+          "trochoidal engagement = acos(1 - ae/R)",
+          f"({tr['engagement_deg']:.1f} deg)")
+    check(tr["engagement_deg"] < 90.0, "engagement bounded well below full slot")
+    check(tr["advance_mm"] <= ae + 1e-9, "advance per loop <= target bite",
+          f"({tr['advance_mm']:.3f} <= {ae})")
+    check(tr["removed_volume_mm3"] > 0 and np.isfinite(tr["cycle_s"]),
+          "trochoidal volume/cycle finite")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)
