@@ -25,16 +25,33 @@ contains
     real(dp) :: ds, sdd_lo, sdd_hi, denom, anew, amaxchg
     integer  :: k, i, it
 
+    ! degenerate paths: nothing to parameterise (n=1) or a single segment with no
+    ! interior curvature (n=2). Guard before the 3-point stencils, which would
+    ! otherwise read q(:,3)/q(:,n-2) out of bounds for n<3.
+    if (n < 2) then
+      aprof = 0.0_dp; ttotal = 0.0_dp
+      return
+    end if
+
     ds = 1.0_dp / real(n - 1, dp)
 
-    ! finite-difference path derivatives in s
+    ! finite-difference path derivatives in s (second-order curvature needs n>=3;
+    ! for n=2 the segment is straight so qpp=0)
     do k = 1, n
       if (k == 1) then
         qp(:, k)  = (q(:, 2) - q(:, 1)) / ds
-        qpp(:, k) = (q(:, 3) - 2.0_dp*q(:, 2) + q(:, 1)) / ds**2
+        if (n >= 3) then
+          qpp(:, k) = (q(:, 3) - 2.0_dp*q(:, 2) + q(:, 1)) / ds**2
+        else
+          qpp(:, k) = 0.0_dp
+        end if
       else if (k == n) then
         qp(:, k)  = (q(:, n) - q(:, n-1)) / ds
-        qpp(:, k) = (q(:, n) - 2.0_dp*q(:, n-1) + q(:, n-2)) / ds**2
+        if (n >= 3) then
+          qpp(:, k) = (q(:, n) - 2.0_dp*q(:, n-1) + q(:, n-2)) / ds**2
+        else
+          qpp(:, k) = 0.0_dp
+        end if
       else
         qp(:, k)  = (q(:, k+1) - q(:, k-1)) / (2.0_dp*ds)
         qpp(:, k) = (q(:, k+1) - 2.0_dp*q(:, k) + q(:, k-1)) / ds**2
