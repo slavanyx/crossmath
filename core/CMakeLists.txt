@@ -7,6 +7,7 @@ add_library(bladecam SHARED
   src/flank_opt.f90
   src/kinematics.f90
   src/topp.f90
+  src/chatter.f90
   src/bladecam_capi.f90)
 
 set_target_properties(bladecam PROPERTIES

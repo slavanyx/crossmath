@@ -83,6 +83,31 @@ def compare_chart(stats: dict, fig=None):
     return fig
 
 
+def chatter_chart(rpm, alim, nlobes, nptsper, feed_rpm=None, fig=None):
+    """Stability-lobe diagram: limiting depth a_lim vs spindle speed."""
+    fig = fig or plt.figure(figsize=(5, 3))
+    ax = fig.add_subplot(111)
+    rpm = np.asarray(rpm).reshape(nlobes, nptsper)
+    alim = np.asarray(alim).reshape(nlobes, nptsper)
+    for k in range(nlobes):
+        order = np.argsort(rpm[k])
+        ax.plot(rpm[k][order], alim[k][order], color="#1f77b4", lw=1.2)
+    amin = float(np.min(alim))
+    ax.axhline(amin, color="#d62728", ls="--", lw=1,
+               label=f"a_lim,min = {amin:.2f} mm")
+    if feed_rpm:
+        ax.axvline(feed_rpm, color="green", ls=":", lw=1, label="spindle")
+    ax.set_xlabel("spindle speed (rpm)")
+    ax.set_ylabel("limiting depth a_lim (mm)")
+    ax.set_title("Chatter stability lobes")
+    ax.set_ylim(0, min(amin * 8, float(np.percentile(alim, 95))))
+    ax.set_xlim(0, float(np.percentile(rpm, 98)))
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    return fig
+
+
 def feed_chart(seglen, aprof, fig=None):
     """Time-optimal tool-tip feed (mm/min) along the toolpath."""
     fig = fig or plt.figure(figsize=(5, 3))

@@ -30,6 +30,7 @@ class Params:
     strategy: str = "minmax"    # two_point | minmax | smoothed | global
     smooth_window: int = 5
     mu: float = 30.0            # global-optimizer smoothness weight
+    gamma: float = 0.0          # tool taper half-angle (rad); 0 = cylinder
     nsweeps: int = 4
     rails: tuple = None         # optional (a, b) override for external blades
     # machine + process
@@ -62,7 +63,7 @@ def compute(p: Params) -> dict:
 
     res = optimize.optimize_blade(a, b, ap, bp, p.R, nv=p.nv,
                                   smooth_window=p.smooth_window,
-                                  mu=p.mu, nsweeps=p.nsweeps)
+                                  mu=p.mu, gamma=p.gamma, nsweeps=p.nsweeps)
     sel = res[p.strategy]
     q0 = sel["q0"]; alpha = sel["alpha"]; dev = sel["dev"]
 

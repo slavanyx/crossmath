@@ -20,6 +20,7 @@ STRATEGIES = ["global", "smoothed", "minmax", "two_point"]
 #   (key, label, lo, hi, step, kind, group)
 PARAM_SPEC = [
     ("R",         "Cutter radius (mm)",     0.5,  30.0, 0.5,  "float", "Tool / strategy"),
+    ("gamma",     "Tool taper γ (rad)",     0.0,  0.5,  0.01, "float", "Tool / strategy"),
     ("mu",        "Smoothness weight µ",    0.0, 200.0, 5.0,  "float", "Tool / strategy"),
     ("nsweeps",   "Global sweeps",          1,    12,   1,    "int",   "Tool / strategy"),
     ("smooth_window", "Smooth window",      1,    21,   2,    "int",   "Tool / strategy"),
@@ -61,7 +62,7 @@ class AppModel:
             n_blades=int(v["n_blades"]), R=v["R"],
             strategy=strategy or self.strategy,
             smooth_window=int(v["smooth_window"]),
-            mu=v["mu"], nsweeps=int(v["nsweeps"]),
+            mu=v["mu"], gamma=v["gamma"], nsweeps=int(v["nsweeps"]),
             machine=MachineLimits(v_rot=v["v_rot"]),
             process=ProcessParams(feed_max_mm_min=v["feed_max"],
                                   dev_allow_um=v["dev_allow"]),

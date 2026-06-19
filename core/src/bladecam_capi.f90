@@ -12,6 +12,7 @@ module bladecam_capi
   use flank_opt_mod, only: refine_minmax, optimize_global
   use kinematics_mod, only: inverse_kin_ac
   use topp_mod, only: topp_ra
+  use chatter_mod, only: stability_lobes
   implicit none
 
 contains
@@ -54,14 +55,26 @@ contains
   !> Global envelope optimization over the whole blade: joint accuracy +
   !> smoothness via coupled block coordinate descent. Rails a,b,ap,bp are
   !> (3,nu); outputs q0,alpha (3,nu) and per-ruling peak deviation dev(nu).
-  subroutine bc_optimize_global(a, b, ap, bp, nu, R, nv, mu, nsweeps, &
+  subroutine bc_optimize_global(a, b, ap, bp, nu, R, nv, mu, gamma, nsweeps, &
                                 q0, alpha, dev) bind(C, name="bc_optimize_global")
     integer(c_int), value :: nu, nv, nsweeps
     real(c_double), intent(in)  :: a(3,nu), b(3,nu), ap(3,nu), bp(3,nu)
-    real(c_double), value       :: R, mu
+    real(c_double), value       :: R, mu, gamma
     real(c_double), intent(out) :: q0(3,nu), alpha(3,nu), dev(nu)
-    call optimize_global(a, b, ap, bp, nu, R, nv, mu, nsweeps, q0, alpha, dev)
+    call optimize_global(a, b, ap, bp, nu, R, nv, mu, gamma, nsweeps, q0, alpha, dev)
   end subroutine bc_optimize_global
+
+  !> Chatter stability-lobe diagram: returns rpm and limiting depth a_lim
+  !> arrays of length nlobes*nptsper.
+  subroutine bc_stability_lobes(wn_hz, zeta, k_stiff, Kt, n_teeth, &
+                                nlobes, nptsper, rpm, alim) &
+       bind(C, name="bc_stability_lobes")
+    real(c_double), value :: wn_hz, zeta, k_stiff, Kt
+    integer(c_int), value :: n_teeth, nlobes, nptsper
+    real(c_double), intent(out) :: rpm(nlobes*nptsper), alim(nlobes*nptsper)
+    call stability_lobes(wn_hz, zeta, k_stiff, Kt, n_teeth, &
+                         nlobes, nptsper, rpm, alim)
+  end subroutine bc_stability_lobes
 
   !> Batch 5-axis inverse kinematics: contact points Q(3,npts) and tool axes
   !> O(3,npts) -> machine axes m(5,npts) = [X,Y,Z,A,C] (A,C in radians).
