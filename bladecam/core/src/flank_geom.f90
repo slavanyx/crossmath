@@ -14,12 +14,29 @@ contains
   subroutine two_point(a_pt, ap, b_pt, bp, R, q0, alpha)
     real(dp), intent(in)  :: a_pt(3), ap(3), b_pt(3), bp(3), R
     real(dp), intent(out) :: q0(3), alpha(3)
-    real(dp) :: ruling(3), n0(3), n1(3), A0(3), A1(3)
+    real(dp) :: ruling(3), rhat(3), n0(3), n1(3), A0(3), A1(3), ref(3)
+    real(dp), parameter :: tiny = 1.0e-12_dp
 
     ruling = b_pt - a_pt
+    rhat = unit3(ruling)
     ! surface normal n = unit( P_u x P_v ); P_v = ruling, P_u = a' at v=0, b' at v=1
-    n0 = unit3(cross(ap, ruling))
-    n1 = unit3(cross(bp, ruling))
+    n0 = cross(ap, ruling)
+    n1 = cross(bp, ruling)
+    ! Degenerate guard: if a rail tangent is (near) parallel to the ruling its
+    ! cross product vanishes and the normal is ill-defined -- without this the
+    ! offset would collapse (A=point) so the cylinder passes THROUGH the surface
+    ! (a gouge of -R). Fall back to the other end's normal, or, if both are
+    ! degenerate, to any direction perpendicular to the ruling.
+    if (norm3(n0) < tiny .and. norm3(n1) < tiny) then
+      ref = [0.0_dp, 0.0_dp, 1.0_dp]
+      if (abs(dot3(rhat, ref)) > 0.9_dp) ref = [1.0_dp, 0.0_dp, 0.0_dp]
+      n0 = cross(rhat, ref); n1 = n0
+    else if (norm3(n0) < tiny) then
+      n0 = n1
+    else if (norm3(n1) < tiny) then
+      n1 = n0
+    end if
+    n0 = unit3(n0); n1 = unit3(n1)
     A0 = a_pt + R * n0
     A1 = b_pt + R * n1
     alpha = unit3(A1 - A0)
