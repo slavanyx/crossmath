@@ -54,9 +54,12 @@ class MainWindow(QtWidgets.QMainWindow):
         mb = self.menuBar()
         filem = mb.addMenu("&File")
         self._act(filem, "Import rails CSV…", self.import_rails)
-        self._act(filem, "Import CAD (STL/STEP/IGES)…", self.import_cad)
+        self._act(filem, "Load blade from STEP/IGES…", self.load_blade_cad)
+        self._act(filem, "Overlay CAD (STL/STEP/IGES)…", self.import_cad)
+        self._act(filem, "Use parametric blade", self.use_parametric)
         filem.addSeparator()
         self._act(filem, "Export blade STL…", self.export_stl)
+        self._act(filem, "Export rails CSV…", self.export_rails)
         self._act(filem, "Save G-code…", self.save_gcode)
         filem.addSeparator()
         self._act(filem, "Quit", self.close, "Ctrl+Q")
@@ -276,6 +279,27 @@ class MainWindow(QtWidgets.QMainWindow):
             self.model.rails = cadio.read_rails_csv(fn)
             self.recompute(compare=True)
 
+    def load_blade_cad(self):
+        """Extract ruled hub/shroud rails from a STEP/IGES blade and optimise it."""
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Load blade from STEP/IGES", "",
+            "B-rep (*.step *.stp *.iges *.igs)")
+        if not fn:
+            return
+        try:
+            a, b = cadio.rails_from_cad(fn, nu=int(self.model.values["nu"]))
+        except Exception as e:
+            self.status.showMessage(f"rail extraction failed: {e}")
+            return
+        self.model.rails = (a, b)
+        self.status.showMessage(f"loaded blade from {fn} ({len(a)} stations)")
+        self.recompute(compare=True)
+
+    def use_parametric(self):
+        """Drop any loaded CAD blade and return to the parametric generator."""
+        self.model.rails = None
+        self.recompute(compare=True)
+
     def import_cad(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Import CAD", "",
@@ -300,6 +324,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if fn:
             v, f = cadio.surface_to_triangles(self.last["surf"])
             cadio.write_stl(fn, v, f)
+
+    def export_rails(self):
+        if not self.last:
+            return
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export rails CSV", "blade_rails.csv", "CSV (*.csv)")
+        if fn:
+            cadio.write_rails_csv(fn, self.last["a"], self.last["b"])
 
     def save_gcode(self):
         if not self.last:

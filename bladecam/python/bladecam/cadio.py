@@ -148,39 +148,44 @@ def _shape_to_mesh(shape, lin_defl: float = 0.5):
     return np.asarray(verts, dtype=np.float64), np.asarray(faces, dtype=np.int64)
 
 
-def read_step(path: str, lin_defl: float = 0.5):
-    """Read a STEP file and return a tessellated (verts, faces) mesh.
-
-    Requires OpenCASCADE bindings. Enables display / collision / STL export of
-    real CAD blades; ruled-rail extraction for the optimizer is separate (use
-    rails CSV). Raises ImportError with guidance if OCP is unavailable.
-    """
+def _occ_or_raise():
     try:
-        from OCP.STEPControl import STEPControl_Reader
-        from OCP.IFSelect import IFSelect_RetDone
+        import OCP  # noqa: F401
     except ImportError as e:
-        raise ImportError("STEP import needs OpenCASCADE: pip install "
+        raise ImportError("STEP/IGES needs OpenCASCADE: pip install "
                           "cadquery-ocp") from e
+
+
+def _read_step_shape(path: str):
+    _occ_or_raise()
+    from OCP.STEPControl import STEPControl_Reader
+    from OCP.IFSelect import IFSelect_RetDone
     rd = STEPControl_Reader()
     if rd.ReadFile(path) != IFSelect_RetDone:
         raise IOError(f"failed to read STEP file: {path}")
     rd.TransferRoots()
-    return _shape_to_mesh(rd.OneShape(), lin_defl)
+    return rd.OneShape()
 
 
-def read_iges(path: str, lin_defl: float = 0.5):
-    """Read an IGES file and return a tessellated (verts, faces) mesh."""
-    try:
-        from OCP.IGESControl import IGESControl_Reader
-        from OCP.IFSelect import IFSelect_RetDone
-    except ImportError as e:
-        raise ImportError("IGES import needs OpenCASCADE: pip install "
-                          "cadquery-ocp") from e
+def _read_iges_shape(path: str):
+    _occ_or_raise()
+    from OCP.IGESControl import IGESControl_Reader
+    from OCP.IFSelect import IFSelect_RetDone
     rd = IGESControl_Reader()
     if rd.ReadFile(path) != IFSelect_RetDone:
         raise IOError(f"failed to read IGES file: {path}")
     rd.TransferRoots()
-    return _shape_to_mesh(rd.OneShape(), lin_defl)
+    return rd.OneShape()
+
+
+def read_step(path: str, lin_defl: float = 0.5):
+    """Read a STEP file and return a tessellated (verts, faces) mesh."""
+    return _shape_to_mesh(_read_step_shape(path), lin_defl)
+
+
+def read_iges(path: str, lin_defl: float = 0.5):
+    """Read an IGES file and return a tessellated (verts, faces) mesh."""
+    return _shape_to_mesh(_read_iges_shape(path), lin_defl)
 
 
 def read_cad(path: str):
@@ -193,3 +198,98 @@ def read_cad(path: str):
     if ext in ("iges", "igs"):
         return read_iges(path)
     raise ValueError(f"unsupported CAD format: .{ext}")
+
+
+# --------------------------------------------------------------------------
+# Automatic ruled-rail extraction from a STEP/IGES blade face
+# --------------------------------------------------------------------------
+def _largest_face(shape):
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopoDS import TopoDS
+    from OCP.GProp import GProp_GProps
+    from OCP.BRepGProp import BRepGProp
+    best, best_area = None, -1.0
+    exp = TopExp_Explorer(shape, TopAbs_FACE)
+    while exp.More():
+        face = TopoDS.Face_s(exp.Current())
+        g = GProp_GProps()
+        BRepGProp.SurfaceProperties_s(face, g)
+        if g.Mass() > best_area:
+            best, best_area = face, g.Mass()
+        exp.Next()
+    if best is None:
+        raise ValueError("no faces found in CAD shape")
+    return best
+
+
+def _straightness(pts):
+    """Max off-line deviation of a sampled curve, normalised by chord length."""
+    d = pts[-1] - pts[0]
+    L = np.linalg.norm(d)
+    if L < 1e-9:
+        return 1.0
+    t = ((pts - pts[0]) @ d) / L**2
+    proj = pts[0] + t[:, None] * d
+    return float(np.max(np.linalg.norm(pts - proj, axis=1)) / L)
+
+
+def rails_from_shape(shape, nu: int = 60, face_index=None, ndetect: int = 11):
+    """Extract hub/shroud rails (a, b) of shape's blade face as (nu,3) arrays.
+
+    The blade flank is taken as the largest face (or face_index). The ruling
+    (hub->shroud) direction is auto-detected as the parameter whose isocurves
+    are straightest; the two rails are that face's boundary curves across it.
+    """
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopoDS import TopoDS
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepTools import BRepTools
+
+    if face_index is None:
+        face = _largest_face(shape)
+    else:
+        faces = []
+        exp = TopExp_Explorer(shape, TopAbs_FACE)
+        while exp.More():
+            faces.append(TopoDS.Face_s(exp.Current())); exp.Next()
+        face = faces[face_index]
+
+    s = BRep_Tool.Surface_s(face)
+    umin, umax, vmin, vmax = BRepTools.UVBounds_s(face)
+
+    def val(uu, vv):
+        p = s.Value(uu, vv)
+        return np.array([p.X(), p.Y(), p.Z()])
+
+    # ruling direction = parameter with the straighter isocurves
+    us = np.linspace(umin, umax, 5)
+    vs = np.linspace(vmin, vmax, 5)
+    kk = np.linspace(0.0, 1.0, ndetect)
+    resid_v = np.mean([_straightness(np.array([val(uu, vmin + t*(vmax-vmin))
+                                               for t in kk])) for uu in us])
+    resid_u = np.mean([_straightness(np.array([val(umin + t*(umax-umin), vv)
+                                               for t in kk])) for vv in vs])
+
+    ps = np.linspace(0.0, 1.0, nu)
+    if resid_v <= resid_u:                      # v is the ruling direction
+        a = np.array([val(umin + t*(umax-umin), vmin) for t in ps])
+        b = np.array([val(umin + t*(umax-umin), vmax) for t in ps])
+    else:                                       # u is the ruling direction
+        a = np.array([val(umin, vmin + t*(vmax-vmin)) for t in ps])
+        b = np.array([val(umax, vmin + t*(vmax-vmin)) for t in ps])
+    return np.ascontiguousarray(a), np.ascontiguousarray(b)
+
+
+def rails_from_cad(path: str, nu: int = 60, face_index=None):
+    """Load a STEP/IGES blade and return ruled hub/shroud rails (a, b)."""
+    ext = path.lower().rsplit(".", 1)[-1]
+    if ext in ("step", "stp"):
+        shape = _read_step_shape(path)
+    elif ext in ("iges", "igs"):
+        shape = _read_iges_shape(path)
+    else:
+        raise ValueError("rail extraction needs a STEP/IGES B-rep surface, "
+                         f"not .{ext}")
+    return rails_from_shape(shape, nu=nu, face_index=face_index)

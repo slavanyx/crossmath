@@ -27,6 +27,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_cad_step.py)
   set_tests_properties(cad_step PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Automatic STEP rail extraction (skips gracefully without OpenCASCADE)
+  add_test(NAME rail_extraction
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_rail_extraction.py)
+  set_tests_properties(rail_extraction PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
