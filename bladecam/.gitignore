@@ -1,0 +1,9 @@
+build/
+*.mod
+*.o
+*.so
+*.dylib
+*.dll
+__pycache__/
+*.pyc
+bladecam_result.csv
