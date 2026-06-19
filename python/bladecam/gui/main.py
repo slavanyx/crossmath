@@ -172,14 +172,12 @@ class MainWindow(QtWidgets.QMainWindow):
             f"{r['dev'].max()*1000:.1f}µm   clearance "
             f"{r['min_clearance']:.2f}mm  [{coll}]")
 
-    def _on_compare(self, cmp):
-        self._update_chart("Deviation", charts.deviation_chart, cmp)
-        # full scalar comparison (runs all strategies once more, off-thread)
-        try:
-            stats = self.model.compute_compare_full()
-            self._update_chart("Compare", charts.compare_chart, stats)
-        except Exception:
-            pass
+    def _on_compare(self, stats):
+        # `stats` already holds dev arrays + scalars (computed in the worker);
+        # reuse for both charts -- no recompute on the UI thread.
+        devmap = {s: stats[s]["dev"] for s in stats}
+        self._update_chart("Deviation", charts.deviation_chart, devmap)
+        self._update_chart("Compare", charts.compare_chart, stats)
 
     # ---- drawing ------------------------------------------------------------
     def _draw_3d(self, r):

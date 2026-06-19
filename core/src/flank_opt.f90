@@ -152,7 +152,11 @@ contains
 
     do j = 1, n+1
       s(:, j) = x
-      if (j > 1) s(j-1, j) = s(j-1, j) + step
+    end do
+    do j = 1, n                 ! vertex j+1 perturbs coordinate j
+      s(j, j+1) = s(j, j+1) + step
+    end do
+    do j = 1, n+1
       fs(j) = objval(s(:, j))
     end do
 

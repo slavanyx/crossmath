@@ -25,6 +25,7 @@ class ComputeWorker(QtCore.QRunnable):
             res = self.model.compute_current()
             self.signals.done.emit(res)
             if self.want_compare:
-                self.signals.compare_done.emit(self.model.compute_compare())
+                # full stats (dev arrays + scalars) computed once, off the UI thread
+                self.signals.compare_done.emit(self.model.compute_compare_full())
         except Exception as e:  # surface errors to the status bar, keep UI alive
             self.signals.failed.emit(f"{type(e).__name__}: {e}")

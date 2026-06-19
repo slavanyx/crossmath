@@ -22,7 +22,7 @@ contains
     real(dp), intent(in)  :: q(ndof, n), vmax(ndof), amax(ndof), a0, aN
     real(dp), intent(out) :: aprof(n), ttotal
     real(dp) :: qp(ndof, n), qpp(ndof, n), abar(n), af(n), ab(n)
-    real(dp) :: ds, lo, hi, sdd_lo, sdd_hi, denom
+    real(dp) :: ds, sdd_lo, sdd_hi, denom
     integer  :: k, i
 
     ds = 1.0_dp / real(n - 1, dp)

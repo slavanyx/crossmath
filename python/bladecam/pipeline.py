@@ -67,14 +67,17 @@ def compute(p: Params) -> dict:
     sel = res[p.strategy]
     q0 = sel["q0"]; alpha = sel["alpha"]; dev = sel["dev"]
 
-    # deviation field on the surface grid (for visualization)
+    # deviation field on the surface grid (for visualization).
+    # gamma applies only to the conical "global" tool; other strategies are
+    # cylindrical, so the displayed field stays consistent with `dev`.
+    eff_gamma = p.gamma if p.strategy == "global" else 0.0
     nv_grid = 30
     surf = blade.surface(a, b, nv_grid)
     v = np.linspace(0.0, 1.0, nv_grid)
     devfield = np.empty((nu, nv_grid))
     for i in range(nu):
         pts = (1.0 - v)[:, None] * a[i][None, :] + v[:, None] * b[i][None, :]
-        devfield[i] = core.deviation(q0[i], alpha[i], p.R, pts)
+        devfield[i] = core.deviation_cone(q0[i], alpha[i], p.R, eff_gamma, pts)
 
     # --- Phase 3: kinematics (contact point = mid-ruling) ---
     contact = 0.5 * (a + b)

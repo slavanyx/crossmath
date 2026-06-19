@@ -47,6 +47,7 @@ _lib = ctypes.CDLL(_find_library())
 _lib.bc_distribution.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL, _DBL]
 _lib.bc_two_point.argtypes = [_DBL, _DBL, _DBL, _DBL, c_double, _DBL, _DBL]
 _lib.bc_deviation.argtypes = [_DBL, _DBL, c_double, _DBL, c_int, _DBL]
+_lib.bc_deviation_cone.argtypes = [_DBL, _DBL, c_double, c_double, _DBL, c_int, _DBL]
 _lib.bc_refine_minmax.argtypes = [_DBL, _DBL, _DBL, _DBL, c_double, c_int,
                                   _DBL, _DBL, _DBL]
 _lib.bc_optimize_global.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int, c_double,
@@ -100,6 +101,17 @@ def deviation(q0, alpha, R: float, pts: np.ndarray) -> np.ndarray:
     g = np.empty(npts, dtype=np.float64)
     _lib.bc_deviation(_ptr(q0), _ptr(alpha), c_double(R),
                       _ptr(pts), c_int(npts), _ptr(g))
+    return g
+
+
+def deviation_cone(q0, alpha, R: float, gamma: float, pts: np.ndarray) -> np.ndarray:
+    """Signed deviation for a conical tool (taper half-angle gamma, rad).
+    gamma=0 is identical to deviation()."""
+    q0 = _c(q0); alpha = _c(alpha); pts = _c(pts)
+    npts = pts.shape[0]
+    g = np.empty(npts, dtype=np.float64)
+    _lib.bc_deviation_cone(_ptr(q0), _ptr(alpha), c_double(R), c_double(gamma),
+                           _ptr(pts), c_int(npts), _ptr(g))
     return g
 
 
