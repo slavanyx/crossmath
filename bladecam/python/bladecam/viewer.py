@@ -63,7 +63,7 @@ def main():
                        "Deflection budget (um)", decimals=0)
 
             self.strategy = QtWidgets.QComboBox()
-            self.strategy.addItems(["minmax", "smoothed", "two_point"])
+            self.strategy.addItems(["global", "smoothed", "minmax", "two_point"])
             self.strategy.currentTextChanged.connect(self.schedule)
             panel.addRow("Strategy", self.strategy)
 

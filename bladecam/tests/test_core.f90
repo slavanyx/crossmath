@@ -18,6 +18,7 @@ program test_core
   call test_refine_improves(nfail)
   call test_ik_roundtrip(nfail)
   call test_topp_straight(nfail)
+  call test_global_smoother(nfail)
 
   if (nfail == 0) then
     print *, "ALL TESTS PASSED"
@@ -160,5 +161,50 @@ contains
     call check(abs(ttot - tref) / tref < 0.02_dp, "TOPP straight-axis time", nfail)
     call check(maxval(aprof) <= vmax(1)**2 + 1.0e-6_dp, "TOPP respects vmax", nfail)
   end subroutine test_topp_straight
+
+  !> Global optimization with a smoothness penalty (mu>0) must produce a
+  !> smoother axis field than the pure min-max field (mu=0), measured by the
+  !> summed squared second-difference of the cutter axis.
+  subroutine test_global_smoother(nfail)
+    integer, intent(inout) :: nfail
+    integer, parameter :: nu = 30, nv = 31
+    real(dp) :: a(3,nu), b(3,nu), ap(3,nu), bp(3,nu)
+    real(dp) :: q0(3,nu), al0(3,nu), alm(3,nu), dev0(nu), devm(nu)
+    real(dp) :: R, t, rough0, roughm
+    integer :: i
+    R = 5.0_dp
+    do i = 1, nu
+      t = real(i-1, dp) / real(nu-1, dp)
+      a(:,i) = [10.0_dp*t, 0.0_dp, 0.0_dp]
+      b(:,i) = [10.0_dp*t, 4.0_dp*cos(1.5_dp*t), 12.0_dp + 4.0_dp*sin(1.5_dp*t)]
+    end do
+    do i = 1, nu
+      if (i == 1) then
+        ap(:,i) = a(:,2)-a(:,1); bp(:,i) = b(:,2)-b(:,1)
+      else if (i == nu) then
+        ap(:,i) = a(:,nu)-a(:,nu-1); bp(:,i) = b(:,nu)-b(:,nu-1)
+      else
+        ap(:,i) = 0.5_dp*(a(:,i+1)-a(:,i-1)); bp(:,i) = 0.5_dp*(b(:,i+1)-b(:,i-1))
+      end if
+    end do
+    call optimize_global(a, b, ap, bp, nu, R, nv, 0.0_dp,  3, q0, al0, dev0)
+    call optimize_global(a, b, ap, bp, nu, R, nv, 50.0_dp, 6, q0, alm, devm)
+    rough0 = axis_roughness(al0, nu)
+    roughm = axis_roughness(alm, nu)
+    call check(roughm < rough0, "global: penalty yields smoother axis field", nfail)
+    call check(maxval(devm) < 5.0_dp, "global: deviation stays bounded", nfail)
+  end subroutine test_global_smoother
+
+  function axis_roughness(al, nu) result(r)
+    integer, intent(in) :: nu
+    real(dp), intent(in) :: al(3,nu)
+    real(dp) :: r, d2(3)
+    integer :: i
+    r = 0.0_dp
+    do i = 2, nu-1
+      d2 = al(:,i+1) - 2.0_dp*al(:,i) + al(:,i-1)
+      r = r + dot3(d2, d2)
+    end do
+  end function axis_roughness
 
 end program test_core

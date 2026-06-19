@@ -9,7 +9,7 @@ module bladecam_capi
   use vec3_mod,   only: dp
   use ruled_mod,  only: distribution
   use flank_mod,  only: two_point, deviation
-  use flank_opt_mod, only: refine_minmax
+  use flank_opt_mod, only: refine_minmax, optimize_global
   use kinematics_mod, only: inverse_kin_ac
   use topp_mod, only: topp_ra
   implicit none
@@ -50,6 +50,18 @@ contains
     real(c_double), intent(out) :: emax
     call refine_minmax(a_pt, ap, b_pt, bp, R, nv, q0, alpha, emax)
   end subroutine bc_refine_minmax
+
+  !> Global envelope optimization over the whole blade: joint accuracy +
+  !> smoothness via coupled block coordinate descent. Rails a,b,ap,bp are
+  !> (3,nu); outputs q0,alpha (3,nu) and per-ruling peak deviation dev(nu).
+  subroutine bc_optimize_global(a, b, ap, bp, nu, R, nv, mu, nsweeps, &
+                                q0, alpha, dev) bind(C, name="bc_optimize_global")
+    integer(c_int), value :: nu, nv, nsweeps
+    real(c_double), intent(in)  :: a(3,nu), b(3,nu), ap(3,nu), bp(3,nu)
+    real(c_double), value       :: R, mu
+    real(c_double), intent(out) :: q0(3,nu), alpha(3,nu), dev(nu)
+    call optimize_global(a, b, ap, bp, nu, R, nv, mu, nsweeps, q0, alpha, dev)
+  end subroutine bc_optimize_global
 
   !> Batch 5-axis inverse kinematics: contact points Q(3,npts) and tool axes
   !> O(3,npts) -> machine axes m(5,npts) = [X,Y,Z,A,C] (A,C in radians).

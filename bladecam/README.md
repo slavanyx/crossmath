@@ -82,16 +82,29 @@ Set `BLADECAM_LIB=/path/to/libbladecam.so` to point at the library explicitly.
   folded into TOPP as a tool-tip feed constraint; **cycle-time** report.
 - Demonstrates smoothing → shorter cycle time at equal accuracy (3.90 → 3.38 s).
 
+**Phase 5 (global optimization, CAD I/O, packaging)**
+- **Global envelope optimization** (`optimize_global` in `flank_opt.f90`):
+  Gauss–Seidel block coordinate descent minimising
+  `J = Σ max_v|g_i| + μ·Σ ‖axis_i − neighbour_avg‖²`, optimising accuracy and
+  orientation smoothness jointly. On the demo blade it reaches ~13 µm peak
+  deviation with the smoothest axis field *and* the fastest cycle time —
+  dominating min-max / smoothed on every metric.
+- **CAD I/O** (`cadio.py`): STL mesh read/write (ASCII + binary), hub/shroud
+  rail-polyline CSV import/export for externally-designed blades. (STEP/IGES
+  needs a B-rep kernel; the rail/STL path is the bridge.)
+- **Packaging**: `pyproject.toml`, `build.sh`, and a Python pipeline smoke
+  test wired into `ctest`.
+
 **GUI** — `viewer.py`: real-time PySide6 + PyVista app. Live 3D blade flank
 coloured by deviation, striction curve, 5-axis cutter axes; sliders for
-geometry / tool / strategy / machine / process; live peak-deviation, jerk,
-cycle-time and collision readouts; G-code export.
+geometry / tool / strategy (incl. global) / machine / process; live
+peak-deviation, jerk, cycle-time and collision readouts; G-code export.
 
 ## Roadmap
 
-- **Phase 5** Global envelope (B-spline control-point) optimization; CAD import
-  (STEP/IGES/STL); APT/optimized G-code export; packaging & installers.
+- STEP/IGES import via OpenCASCADE (pythonocc).
 - Chatter stability-lobe model from a measured tool-tip FRF.
 - Conical/barrel tool support for strongly warped blades.
+- Double-flank milling of thin blades (one tool, both sides).
 
 See the design notes for the governing formulas behind each phase.
