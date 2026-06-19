@@ -58,7 +58,8 @@ def _smoothed_field(a, b, R, nv, mm, smooth_window, tol_mm):
 
 
 def optimize_blade(a, b, ap, bp, R, nv=41, smooth_window=5, tol_mm=None,
-                   mu=1.0, gamma=0.0, nsweeps=3, strategy="global"):
+                   mu=1.0, gamma=0.0, nsweeps=3, strategy="global",
+                   swept_w=0.0, swept_window=8):
     """Return {strategy: dict(q0, alpha, dev)} for ONE strategy (default
     'global') or, with strategy='all', every strategy.
 
@@ -77,7 +78,8 @@ def optimize_blade(a, b, ap, bp, R, nv=41, smooth_window=5, tol_mm=None,
             out["smoothed"] = _smoothed_field(a, b, R, nv, mm, smooth_window, tol_mm)
     if "global" in want:
         q0, al, e = core.optimize_global(a, b, ap, bp, R, nv=nv,
-                                         mu=mu, gamma=gamma, nsweeps=nsweeps)
+                                         mu=mu, gamma=gamma, nsweeps=nsweeps,
+                                         swept_w=swept_w, window=swept_window)
         out["global"] = dict(q0=q0, alpha=al, dev=e)
     return out
 

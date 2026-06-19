@@ -66,12 +66,14 @@ contains
   !> smoothness via coupled block coordinate descent. Rails a,b,ap,bp are
   !> (3,nu); outputs q0,alpha (3,nu) and per-ruling peak deviation dev(nu).
   subroutine bc_optimize_global(a, b, ap, bp, nu, R, nv, mu, gamma, nsweeps, &
-                                q0, alpha, dev) bind(C, name="bc_optimize_global")
-    integer(c_int), value :: nu, nv, nsweeps
+                                swept_w, window, q0, alpha, dev) &
+       bind(C, name="bc_optimize_global")
+    integer(c_int), value :: nu, nv, nsweeps, window
     real(c_double), intent(in)  :: a(3,nu), b(3,nu), ap(3,nu), bp(3,nu)
-    real(c_double), value       :: R, mu, gamma
+    real(c_double), value       :: R, mu, gamma, swept_w
     real(c_double), intent(out) :: q0(3,nu), alpha(3,nu), dev(nu)
-    call optimize_global(a, b, ap, bp, nu, R, nv, mu, gamma, nsweeps, q0, alpha, dev)
+    call optimize_global(a, b, ap, bp, nu, R, nv, mu, gamma, nsweeps, &
+                         swept_w, window, q0, alpha, dev)
   end subroutine bc_optimize_global
 
   !> Double-flank channel optimization: one cylinder tangent to both walls
