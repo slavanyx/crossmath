@@ -78,6 +78,21 @@ def main():
     volt = verify.removed_volume(q0, alt, R, Lf, [-12, -12, 0], [12, 12, 25], n=160)
     check(volt > 0.5*exact, "tilted pose removes a sane volume", f"({volt:.1f})")
 
+    # progressive carve (interactive simulation engine): removing material with
+    # the first k poses must be monotone non-decreasing in k and converge to the
+    # full removed volume. Two cylinders along x at 0 and 30.
+    qp = np.array([[0., 0, 0], [30., 0, 0]]); apv = np.array([[0., 0, 1.], [0., 0, 1.]])
+    Lfp = np.array([20., 20.])
+    box_lo, box_hi = [-8, -8, 0], [40, 8, 20]
+    vols = [0.0] + [verify.removed_volume(qp[:k], apv[:k], R, Lfp[:k],
+                                          box_lo, box_hi, n=120)
+                    for k in (1, 2)]
+    check(vols[1] <= vols[2] + 1e-6 and vols[0] <= vols[1],
+          "progressive carve volume is monotone in k",
+          f"({[round(v,1) for v in vols]})")
+    full = verify.removed_volume(qp, apv, R, Lfp, box_lo, box_hi, n=120)
+    check(abs(vols[-1] - full) < 1e-6, "progressive carve converges to full volume")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)

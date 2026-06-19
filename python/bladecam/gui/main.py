@@ -121,6 +121,9 @@ class MainWindow(QtWidgets.QMainWindow):
         trail_act = wf.addAction("Sweep trail", self._toggle_trail)
         trail_act.setCheckable(True)
         trail_act.setChecked(True)
+        self._sim_mode = False
+        sim_act = wf.addAction("Simulate removal", self._toggle_sim)
+        sim_act.setCheckable(True)
 
     def _build_3d_view(self):
         self.plotter = QtInteractor(self)
@@ -355,6 +358,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.results_tbl.setItem(i, 1, QtWidgets.QTableWidgetItem(str(v)))
 
     _TRAIL_N = 8   # number of fading ghost cutters behind the current one
+    _SIM_MAX = 30  # max faint cutters drawn for the accumulated swept volume
 
     def _show_tool_at(self, i):
         """Render the cutter as a solid cylinder at station i (named actor, so
@@ -392,7 +396,54 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plotter.add_mesh(cutter(i), color="#d4af37", opacity=0.6, name="tool")
         self.plotter.add_mesh(pv.Sphere(radius=R*0.18, center=r["contact"][i]),
                               color="red", name="contact")
+
+        # interactive dexel material-removal simulation: as the slider advances,
+        # show the swept tool volume carved so far and the dexel-measured removed
+        # volume / % of the final cut.
+        if getattr(self, "_sim_mode", False):
+            self._sim_render(i, cutter)
         self.plotter.render()
+
+    def _sim_render(self, i, cutter):
+        from .. import verify
+        r = self.last; nu = r["q0"].shape[0]
+        # accumulated swept volume up to station i (faint cylinders, subsampled)
+        js = list(range(0, i + 1, max(1, (i // self._SIM_MAX) + 1)))
+        for s in range(self._SIM_MAX):
+            name = f"swv_{s}"
+            if s < len(js):
+                self.plotter.add_mesh(cutter(js[s]), color="#6f86c6",
+                                      opacity=0.10, name=name)
+            else:
+                try:
+                    self.plotter.remove_actor(name)
+                except Exception:
+                    pass
+        # dexel removed volume with poses 0..i vs the full cut
+        R = self.model.values["R"]
+        Lf = np.linalg.norm(r["b"] - r["a"], axis=1)
+        flat = r["surf"].reshape(-1, 3)
+        lo = flat.min(0) - 2*R; hi = flat.max(0) + 2*R
+        vol = verify.removed_volume(r["q0"][:i+1], r["alpha"][:i+1], R, Lf[:i+1],
+                                    lo, hi, n=48)
+        if not hasattr(self, "_sim_full") or self._sim_full <= 0:
+            self._sim_full = verify.removed_volume(r["q0"], r["alpha"], R, Lf,
+                                                   lo, hi, n=48)
+        pct = 100.0 * vol / self._sim_full if self._sim_full > 0 else 0.0
+        self.status.showMessage(
+            f"material removal — station {i+1}/{nu}: {vol:.0f} mm³ ({pct:.0f}% of cut)")
+
+    def _toggle_sim(self, on):
+        self._sim_mode = bool(on)
+        self._sim_full = 0.0
+        if not on:
+            for s in range(self._SIM_MAX):
+                try:
+                    self.plotter.remove_actor(f"swv_{s}")
+                except Exception:
+                    pass
+        if self.last:
+            self._show_tool_at(self.anim_slider.value())
 
     def _toggle_trail(self, on):
         self._trail = bool(on)
