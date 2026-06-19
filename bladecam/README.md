@@ -39,6 +39,13 @@ ctest --test-dir build --output-on-failure
 
 Produces `build/core/libbladecam.{so,dylib}` (or `bladecam.dll` on Windows).
 
+`ctest` runs four suites: `core` (Fortran unit tests), `python` (pipeline +
+GUI-model smoke), `audit_regressions` (one named test per bug found in the
+adversarial audit), and `warnings` (compiles the core with
+`-Werror=do-subscript,unused-variable` to catch dead-code / out-of-bounds
+regressions). Each regression test was mutation-verified: reintroducing the
+bug makes its test fail.
+
 ## Run
 
 ```bash
