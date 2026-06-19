@@ -138,10 +138,18 @@ matplotlib):
   OpenCASCADE): real CAD blades load as tessellated meshes for display,
   collision and STL export. Install with `pip install -e ".[cad]"`.
 
+**Phase 8 (automatic rail extraction + full GUI integration)**
+- **Automatic ruled-rail extraction** (`cadio.rails_from_cad`/`rails_from_shape`):
+  picks the blade flank face (largest by area), auto-detects the ruling
+  (hub→shroud) direction as the parameter with straightest isocurves, and
+  returns the two boundary rails — recovering known rails to <0.2 mm in tests.
+- **GUI**: "Load blade from STEP/IGES" (extract rails → optimise the real
+  blade), "Overlay CAD", "Use parametric", and rails-CSV / STL / G-code export.
+
 ## Roadmap
 
-- Extract ruled hub/shroud rails automatically from imported STEP B-rep faces.
 - Stability lobes from a *measured* tool-tip FRF (replace the modal model).
 - Double-flank milling of thin blades (one tool, both sides).
+- Multi-face blisk import (per-blade rail extraction across all flank faces).
 
 See the design notes for the governing formulas behind each phase.
