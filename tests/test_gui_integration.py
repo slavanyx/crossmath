@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""GUI-integration audit: every parameter, strategy, Operation and chart path
+the (Qt-free) model/charts layers expose must run headlessly. Guards against a
+feature being added to the core but not wired into the interface."""
+import sys
+
+try:
+    import numpy as np
+    from bladecam.gui.model import AppModel, STRATEGIES, PARAM_SPEC, MACHINE_SPEC
+    from bladecam.gui import charts
+    from bladecam import pipeline, core
+except ImportError as e:
+    print(f"SKIP gui-integration ({e})")
+    sys.exit(0)
+
+FAILED = []
+
+
+def check(c, name):
+    print(f"  {'ok  ' if c else 'FAIL'} {name}")
+    if not c:
+        FAILED.append(name)
+
+
+def main():
+    m = AppModel()
+
+    # every auto-generated editor maps to a real model value
+    check(all(spec[0] in m.values for spec in PARAM_SPEC + MACHINE_SPEC),
+          "all parameter editors map to model values")
+
+    # every strategy is reachable via the model
+    good = True
+    for s in STRATEGIES:
+        m.strategy = s
+        good &= bool(np.all(np.isfinite(m.compute_current()["dev"])))
+    check(good, "all strategies compute via the model")
+
+    # comparison data + its two charts
+    stats = m.compute_compare_full()
+    check(all("dev" in stats[s] for s in stats), "compare-full carries dev arrays")
+    charts.deviation_chart({s: stats[s]["dev"] for s in stats})
+    charts.compare_chart(stats)
+
+    # every Operations-menu compute path
+    p = m.build_params()
+    check(np.all(np.isfinite(pipeline.double_flank_channel(p)["devL"])),
+          "operation: double-flank channel")
+    check(pipeline.rough_channel(p)["total_len_mm"] > 0, "operation: roughing")
+    check(pipeline.edge_finish(p)["n_rows"] >= 2, "operation: edge finishing")
+    check(pipeline.stacked_flank_passes(p)["n_passes"] >= 1, "operation: stacked passes")
+
+    # analysis charts incl. modal + measured-FRF chatter
+    r = m.compute_current()
+    charts.machinability_chart(r["delta"], r["dev"])
+    charts.feed_chart(r["seglen"], r["aprof"])
+    rpm, al = core.stability_lobes(800, 0.03, 2e4, 800, 4, 6, 80)
+    charts.chatter_chart(rpm, al, 6, 80, 12000)
+    freq = np.linspace(800, 1600, 200)
+    G = (1 / 2e4) / ((1 - (freq / 800) ** 2) + 1j * 2 * 0.03 * (freq / 800))
+    rpmf, alf = core.stability_lobes_frf(freq, G.real, G.imag, 800, 4, 6)
+    charts.chatter_chart(rpmf, alf, 6, 200, 12000)
+    check(True, "analysis charts: machinability / feed / chatter (modal+FRF)")
+
+    if FAILED:
+        print(f"\nFAILED: {FAILED}")
+        sys.exit(1)
+    print("\nGUI INTEGRATION TESTS PASSED")
+
+
+if __name__ == "__main__":
+    main()

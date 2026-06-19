@@ -87,6 +87,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_postproc.py)
   set_tests_properties(postproc PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # GUI integration: every parameter / strategy / operation / chart path
+  add_test(NAME gui_integration
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_gui_integration.py)
+  set_tests_properties(gui_integration PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
