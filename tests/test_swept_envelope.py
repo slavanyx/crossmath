@@ -101,6 +101,21 @@ def main():
     check(np.max(np.linalg.norm(envc - on_cone, axis=1)) < 1e-9,
           "conical envelope surface lands on the cone")
 
+    # barrel: points on a circle-segment tool read ~0 swept deviation, and the
+    # swept envelope surface lands back on the barrel (exercises the barrel
+    # branch of both tool_sdf and the tool_radius projection).
+    Rb, lamc = 200.0, 15.0
+    lamb = np.array([5., 10., 15., 20., 25.])
+    on_barrel = np.column_stack([(Rc - Rb) + np.sqrt(Rb**2 - (lamb - lamc)**2),
+                                 0*lamb, lamb])
+    Lfb = np.array([30.0])
+    gb = core.swept_deviation(qc, ac, Lfb, Rc, on_barrel, Rb=Rb, lamc=lamc)
+    check(np.max(np.abs(gb)) < 1e-8, "barrel swept ~0 on the barrel surface",
+          f"(max {np.max(np.abs(gb)):.2e})")
+    envb = core.swept_surface(qc, ac, Lfb, Rc, on_barrel, Rb=Rb, lamc=lamc)
+    check(np.max(np.linalg.norm(envb - on_barrel, axis=1)) < 1e-6,
+          "barrel envelope surface lands on the barrel")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)
