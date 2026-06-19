@@ -21,7 +21,7 @@ STRATEGIES = ["global", "smoothed", "minmax", "two_point"]
 PARAM_SPEC = [
     ("R",         "Cutter radius (mm)",     0.5,  30.0, 0.5,  "float", "Tool / strategy"),
     ("gamma",     "Tool taper γ (rad)",     0.0,  0.5,  0.01, "float", "Tool / strategy"),
-    ("mu",        "Smoothness weight µ",    0.0, 200.0, 5.0,  "float", "Tool / strategy"),
+    ("mu",        "Smoothness weight µ",    0.0,  20.0, 0.5,  "float", "Tool / strategy"),
     ("nsweeps",   "Global sweeps",          1,    12,   1,    "int",   "Tool / strategy"),
     ("smooth_window", "Smooth window",      1,    21,   2,    "int",   "Tool / strategy"),
     ("twist",     "Blade twist (rad)",      0.0,  2.0,  0.05, "float", "Geometry"),
