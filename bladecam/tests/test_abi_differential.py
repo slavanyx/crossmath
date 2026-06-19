@@ -139,6 +139,27 @@ def main():
     chk("tool_clearance", core.tool_clearance(q0s, als, P, R, Lfl, Rh, gap, Lh),
         tc_ref(P))
 
+    # deviation_barrel: signed distance to the circular-arc flank profile
+    Rb, lamc = 200.0, 12.0
+    gb = core.deviation_barrel(q0, al, R, Rb, lamc, pts)
+    cr = R - Rb
+    gb_ref = np.sqrt((perp - cr)**2 + (lam - lamc)**2) - Rb
+    chk("deviation_barrel", gb, gb_ref)
+
+    # swept_deviation with a barrel profile (Rb>0) vs independent ref
+    def sdb_ref(P):
+        out = []
+        for p in P:
+            best = 1e18
+            for i in range(n2):
+                wv = p - q0s[i]; l = np.clip(wv @ als[i], 0, Lf[i])
+                pp = np.linalg.norm(wv - l*als[i])
+                best = min(best, np.sqrt((pp - cr)**2 + (l - lamc)**2) - Rb)
+            out.append(best)
+        return np.array(out)
+    chk("swept_deviation(barrel)",
+        core.swept_deviation(q0s, als, Lf, R, P, Rb=Rb, lamc=lamc), sdb_ref(P))
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)

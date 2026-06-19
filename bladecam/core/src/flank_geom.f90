@@ -4,9 +4,57 @@ module flank_mod
   implicit none
   private
   public :: two_point, deviation, deviation_cone, max_dev_ruling, swept_deviation
-  public :: swept_surface
+  public :: swept_surface, deviation_barrel
 
 contains
+
+  !> Signed distance from a point at (radial perp, axial lam from the tool base)
+  !> to the tool flank surface, for the three flank-tool families:
+  !>   cylinder : Rb<=0, gamma=0  -> perp - R
+  !>   cone     : Rb<=0, gamma!=0 -> (perp - (R+lam*tan g)) * cos g
+  !>   barrel   : Rb>0            -> dist to the circular-arc profile of radius Rb
+  !>             whose widest radius R sits at axial lamc (arc centre perp=R-Rb).
+  !> Negative = inside the tool (gouge).
+  pure function tool_sdf(perp, lam, R, gamma, Rb, lamc) result(g)
+    real(dp), intent(in) :: perp, lam, R, gamma, Rb, lamc
+    real(dp) :: g, cr
+    if (Rb > 0.0_dp) then
+      cr = R - Rb
+      g = sqrt((perp - cr)**2 + (lam - lamc)**2) - Rb
+    else
+      g = (perp - (R + lam*tan(gamma))) * cos(gamma)
+    end if
+  end function tool_sdf
+
+  !> Local tool radius (perp extent) at axial lam, used to project a point onto
+  !> the tool surface. Barrel collapses to 0 radius outside its arc span.
+  pure function tool_radius(lam, R, gamma, Rb, lamc) result(rho)
+    real(dp), intent(in) :: lam, R, gamma, Rb, lamc
+    real(dp) :: rho, d2
+    if (Rb > 0.0_dp) then
+      d2 = Rb*Rb - (lam - lamc)**2
+      rho = (R - Rb) + sqrt(max(d2, 0.0_dp))
+    else
+      rho = R + lam*tan(gamma)
+    end if
+  end function tool_radius
+
+  !> Per-station signed deviation for a BARREL (circle-segment) tool: arc radius
+  !> Rb, widest radius R at axial position lamc measured from q0 along alpha.
+  subroutine deviation_barrel(q0, alpha, R, Rb, lamc, pts, npts, g)
+    integer, intent(in)  :: npts
+    real(dp), intent(in) :: q0(3), alpha(3), R, Rb, lamc, pts(3, npts)
+    real(dp), intent(out) :: g(npts)
+    integer :: i
+    real(dp) :: ahat(3), w(3), lam, perp
+    ahat = unit3(alpha)
+    do i = 1, npts
+      w = pts(:, i) - q0
+      lam = dot3(w, ahat)
+      perp = norm3(w - lam*ahat)
+      g(i) = tool_sdf(perp, lam, R, 0.0_dp, Rb, lamc)
+    end do
+  end subroutine deviation_barrel
 
   !> Two-point cutter positioning (Bedi/Mann/Menzel) for one ruling.
   !> Tangency is enforced at both ruling ends by offsetting each endpoint
@@ -87,13 +135,14 @@ contains
   !> cross-station interference (the tool at one station gouging the surface that
   !> "belongs" to another) which the per-station deviation cannot see. g < 0 is a
   !> real overcut/gouge of the machined part.
-  subroutine swept_deviation(q0, alpha, Lflute, R, gamma, nu, pts, npts, g)
+  subroutine swept_deviation(q0, alpha, Lflute, R, gamma, Rb, lamc, nu, &
+                             pts, npts, g)
     integer,  intent(in)  :: nu, npts
-    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), R, gamma, pts(3,npts)
+    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), R, gamma, Rb, lamc
+    real(dp), intent(in)  :: pts(3,npts)
     real(dp), intent(out) :: g(npts)
     integer  :: p, i
-    real(dp) :: ahat(3,nu), w(3), lam, d, tg, cg, rho
-    tg = tan(gamma); cg = cos(gamma)        ! gamma=0 -> cylinder (tg=0, cg=1)
+    real(dp) :: ahat(3,nu), w(3), lam, d, perp
     do i = 1, nu
       ahat(:,i) = unit3(alpha(:,i))
     end do
@@ -103,8 +152,8 @@ contains
         w = pts(:,p) - q0(:,i)
         lam = dot3(w, ahat(:,i))
         lam = max(0.0_dp, min(Lflute(i), lam))     ! finite engaged flute
-        rho = R + lam*tg                            ! local tool radius (cone)
-        d = (norm3(w - lam*ahat(:,i)) - rho) * cg   ! signed dist to cone surface
+        perp = norm3(w - lam*ahat(:,i))
+        d = tool_sdf(perp, lam, R, gamma, Rb, lamc)  ! cyl/cone/barrel
         if (d < g(p)) g(p) = d
       end do
     end do
@@ -116,14 +165,14 @@ contains
   !> swept tool volume in the radial direction. Overcut points move inward
   !> (gouge), undercut points move outward (leftover stock). Returns the machined
   !> point mpts(3,npts) for a design-point cloud pts(3,npts).
-  subroutine swept_surface(q0, alpha, Lflute, R, gamma, nu, pts, npts, mpts)
+  subroutine swept_surface(q0, alpha, Lflute, R, gamma, Rb, lamc, nu, &
+                           pts, npts, mpts)
     integer,  intent(in)  :: nu, npts
-    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), R, gamma, pts(3,npts)
+    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), Lflute(nu), R, gamma, Rb, lamc
+    real(dp), intent(in)  :: pts(3,npts)
     real(dp), intent(out) :: mpts(3,npts)
     integer  :: p, i, ibest
-    real(dp) :: ahat(3,nu), w(3), lam, d, dbest, axpt(3), rad(3), rn, lbest
-    real(dp) :: tg, cg, rho
-    tg = tan(gamma); cg = cos(gamma)
+    real(dp) :: ahat(3,nu), w(3), lam, d, dbest, axpt(3), rad(3), rn, lbest, perp
     do i = 1, nu
       ahat(:,i) = unit3(alpha(:,i))
     end do
@@ -135,8 +184,8 @@ contains
         w = pts(:,p) - q0(:,i)
         lam = dot3(w, ahat(:,i))
         lam = max(0.0_dp, min(Lflute(i), lam))
-        rho = R + lam*tg
-        d = (norm3(w - lam*ahat(:,i)) - rho) * cg
+        perp = norm3(w - lam*ahat(:,i))
+        d = tool_sdf(perp, lam, R, gamma, Rb, lamc)
         if (d < dbest) then; dbest = d; ibest = i; lbest = lam; end if
       end do
       ! project the point onto the chosen cutter surface at its local radius
@@ -144,7 +193,7 @@ contains
       rad  = pts(:,p) - axpt
       rn   = norm3(rad)
       if (rn > 1.0e-12_dp) then
-        mpts(:,p) = axpt + (R + lbest*tg) * (rad / rn)
+        mpts(:,p) = axpt + tool_radius(lbest, R, gamma, Rb, lamc) * (rad / rn)
       else
         mpts(:,p) = pts(:,p)
       end if
