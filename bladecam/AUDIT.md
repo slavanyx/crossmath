@@ -142,14 +142,73 @@ For each angle: the question, the techniques, and BladeCAM-specific targets.
 - Do tests encode *wrong* hypotheses (past examples: "thinner bands reduce
   deviation", "penalty ⇒ smoother")? Re-derive the expected value independently.
 
+### K. Machine model, reachability & structural collision
+- **Reachability:** does the IK path respect the profile's X/Y/Z travel and A/C
+  rotary ranges? Construct a path that pokes just past each limit and confirm the
+  exact axis + excess is flagged; a path inside is clean. Check A/C unwrap doesn't
+  spuriously exceed C range.
+- **Profiles:** every default machine is a valid TOPP drop-in (vmax/amax len 5,
+  kind ∈ {0,1}); editing limits in the config editor flows into Params.
+- **Structural collision:** the trunnion TABLE is a static obstacle in the PART
+  frame. Oracle: a tool assembly tilted toward the table is caught, one pointing
+  away clears; the near-vertical optimised path must NOT false-trigger (table
+  sits below the flute base by mount_clearance). Verify the frame assumption
+  (table moves with the part in table-table A-C) — it is WRONG for head-head.
+- Targets: `machine.py` (Machine, reachability, structure_obstacles),
+  `collision.f90` (assembly_*), `pipeline.py` (obstacle assembly, mount_z).
+
+### L. Cutting-force & process physics (mechanistic model)
+- Force scaling: F_peak, F_mean, power, torque must rise monotonically with fz,
+  ap, ae; power ≈ mean-tangential·R·ω (cross-check torque·ω). Edge terms (Kte,
+  Kre) give a non-zero force at fz→0. Engagement arc φ_ex=acos(1−ae/R) correct at
+  ae=0, R, 2R (slot → π).
+- Feed caps: deflection, max-force and power caps each BIND when tightened
+  (monotone); `effective_feed` is the min; `feed_feasible` is False when forces
+  overload at fz→0. Floor at 1 mm/min keeps TOPP well-posed — verify no 0-feed
+  NaN downstream.
+- Targets: `process.py` (cutting_forces, *_feed_cap, feed_feasible), `pipeline.py`.
+
+### M. Material-removal / dexel verification
+- Carve primitive vs brute force: removed length = analytic chord; misses outside
+  R / beyond the flute cap; OVERLAPPING poses union (single interval) AND
+  DISJOINT poses (sum, gap not counted) — both. first_cut = nearest entry.
+- Removed volume vs closed form (π R² Lf, <1%); tilted poses (Cavalieri holds);
+  progressive carve over poses 0..k monotone and converges to the full volume.
+- Targets: `dexel.f90` (ray_cyl, union/merge), `verify.py` (removed_volume).
+
+### N. Tooling families (cylinder / cone / barrel consistency)
+- The SAME tool family must be used everywhere for a given run: optimizer
+  objective, per-station devfield, swept deviation, swept surface, GUI render.
+  Oracle: a point ON the cone/barrel surface reads ~0 in EACH of those paths;
+  cylinder defaults (gamma=0, Rb=0) reproduce the old results byte-for-byte.
+- Barrel-aware optimisation fits the arc flank better than a cylinder-optimised
+  axis; the optimiser's reported dev uses the active tool model.
+- Targets: `flank_geom.f90` (tool_sdf, deviation_*), `flank_opt.f90` (tool_dev),
+  `pipeline.py` (eff_gamma/eff_Rb threading).
+
+### O. Post-processors (G-code / Heidenhain TCPM)
+- ISO: inverse-time (G93) feeds reconstruct the TOPP cycle time; one move per
+  segment; constant-feed fallback. Heidenhain: framed BEGIN/END PGM, TCPM
+  activate+reset, one LN per pose, tool vectors UNIT and equal to the optimised
+  axis, sane reconstructed feed. Units (mm, mm/min) and signs.
+- Edge cases: single-pose path, non-unit input axis. Targets: `postproc.py`.
+
+### P. CAD I/O & feature extraction
+- Rail extraction: edge-based (trimmed faces) and UV fallback recover the rails;
+  ruling-direction tie-break is deterministic; orientation normalised hub-first /
+  low-Z-first across faces. Blisk: one rail pair per blade. Fuzz with new shape
+  families (sphere/torus/open shells) — must degrade gracefully, never crash.
+- Targets: `cadio.py` (`_rails_from_face*`, `_orient_hub_first`,
+  `rails_from_all_faces`, `_sample_edge`).
+
 ## 4. Module-by-module sweep (don't skip any)
 
 Core (`core/src`): `vec3.f90`, `ruled_surface.f90`, `flank_geom.f90`,
 `flank_opt.f90`, `kinematics.f90`, `topp.f90`, `chatter.f90`, `collision.f90`,
-`bladecam_capi.f90`.
+`dexel.f90`, `bladecam_capi.f90`.
 Python (`python/bladecam`): `core.py` (bindings), `blade.py`, `optimize.py`,
-`pipeline.py`, `process.py`, `cadio.py`, `pointmill.py`, `roughing.py`,
-`postproc.py`, `workflow.py`, `gui/*`.
+`pipeline.py`, `process.py`, `machine.py`, `verify.py`, `cadio.py`,
+`pointmill.py`, `roughing.py`, `postproc.py`, `workflow.py`, `gui/*`.
 For each: list its assumptions/preconditions explicitly, then attack each one.
 
 ## 5. Suggested execution order (cheap signal first)
@@ -157,12 +216,14 @@ For each: list its assumptions/preconditions explicitly, then attack each one.
 1. Test-suite mutation sweep (J) — finds blind spots fast.
 2. API/boundary differential tests (E) — silent corruption is highest-severity.
 3. Math oracles + scaling laws (A) and physical-fidelity diffs (B).
-4. Degeneracy/fuzz probes (C, F).
+4. Degeneracy/fuzz probes (C, F) — include new modules (K–P).
 5. Algorithmic guarantees (D), then consistency/defaults/GUI/perf (G, H, I).
+6. Subsystem angles K–P (machine, forces, dexel, tooling, posts, CAD) —
+   each with its own external oracle as listed.
 
 ## 6. Exit criteria (when the pass is genuinely done)
 
-- Every angle A–J has been exercised with at least one *external* oracle or
+- Every angle A–P has been exercised with at least one *external* oracle or
   adversarial input, and the result (clean / fixed) is stated with its oracle.
 - Every confirmed defect has a mutation-verified regression test, committed.
 - A full mutation sweep of the core leaves no surviving untested mutation in the
@@ -174,11 +235,25 @@ For each: list its assumptions/preconditions explicitly, then attack each one.
 
 ## 7. Known limitations / watch-list (don't "re-discover" — verify or extend)
 
+RESOLVED (verify they haven't regressed; don't re-report as new):
+- Conical/barrel swept envelope — DONE (swept_deviation/surface take gamma, Rb,
+  lamc; on-surface reads 0). Barrel-aware optimisation — DONE.
+- TOPP short-path OOB (n<3) — guarded. Two-point degenerate normal — guarded.
+- Per-station vs swept, per-pose vs continuous collision — DONE.
+
+OPEN (real residual limitations — state honestly, improve if in scope):
 - TOPP at an exact velocity cusp: bounded but ~1.75× amax at the singular grid
-  station (discretization). Verify it hasn't regressed; improve if cheap.
-- swept_deviation / swept_surface are cylinder-only — conical/barrel envelopes
-  are NOT yet modelled. Treat as an open fidelity gap, not "fine".
-- Holder check vs the current blade is per-station (the flute/neighbour check is
-  continuous). Audit whether per-station can miss a between-station holder swing.
-- Default ProcessParams may not be a collision-free setup for the default tight
-  blisk — decide if that's intended or should be retuned.
+  station (discretization).
+- Holder-vs-current-blade check is per-station while the assembly/neighbour and
+  fixture checks are swept; audit whether a between-station holder swing can slip.
+- Structural collision is tool-assembly + table/fixture, NOT a full kinematic
+  machine model (no ram/column/trunnion link geometry); table frame assumes
+  table-table A-C (wrong for head-head kind=1 — verify or guard).
+- Mechanistic force coefficients (Kt/Kr/Kte/Kre) are nominal, not measured;
+  helix lag is ignored (instantaneous engagement). Treat outputs as indicative.
+- Dexel machined-error-along-normals was dropped (unreliable on coarse normals);
+  only removed_volume is trusted. Z-dexel volume is Cavalieri (single direction).
+- Default tight blisk (n_blades=11) is not collision-free; barrel is verify+opt
+  but the per-station devfield uses the barrel only for the global strategy.
+- swept_clearance "hit slack" mutation survives (provably benign via the hi>lo
+  guard) — do not "fix".
