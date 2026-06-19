@@ -180,6 +180,10 @@ def compute(p: Params) -> dict:
     nu = a.shape[0]
     pr = p.process
     feed_cap = pr.effective_feed_mm_min()
+    # mechanistic cutting forces at the planned feed-per-tooth
+    fz_eff = feed_cap / max(1.0, pr.n_teeth * pr.rpm)
+    forces = pr.cutting_forces(fz_eff)
+    feed_feasible = pr.feed_feasible()
 
     delta, vstar, strict = core.distribution(a, b)
 
@@ -288,6 +292,9 @@ def compute(p: Params) -> dict:
         holder_clearance=holder_min, assembly_clearance=float(clr.min()),
         reachable=reachable, axis_violations=axis_violations,
         machine_name=machine_name,
+        cut_force_peak_N=forces["F_peak"], cut_force_mean_N=forces["F_mean"],
+        cut_power_W=forces["power_W"], cut_torque_Nm=forces["torque_Nm"],
+        feed_feasible=feed_feasible,
         gouge_max=gouge_max, swept_overcut=swept_overcut, clearance=clr,
         swept_field=swept_field, envelope_surf=envelope_surf,
         orient_jerk=optimize.orientation_jerk(alpha),

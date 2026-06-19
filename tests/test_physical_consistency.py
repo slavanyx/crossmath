@@ -58,6 +58,28 @@ def main():
     c_l2, _ = cyc(MachineLimits(v_lin=200))
     check(c_l2 <= c_l1 + 1e-6, "more linear vmax never increases cycle")
 
+    # --- mechanistic cutting-force model ---
+    p = ProcessParams()
+    f1 = p.cutting_forces(0.05); f2 = p.cutting_forces(0.10)
+    check(f2["F_peak"] > f1["F_peak"] and f2["power_W"] > f1["power_W"],
+          "forces & power increase with feed-per-tooth",
+          f"(F {f1['F_peak']:.0f}->{f2['F_peak']:.0f} N)")
+    # deeper / wider cut raises forces
+    check(ProcessParams(ap=8).cutting_forces(0.05)["F_peak"]
+          > p.cutting_forces(0.05)["F_peak"], "deeper cut raises force")
+    # a low max-force cap lowers the feed
+    cap_hi = ProcessParams(max_force_N=5000).mechanistic_feed_cap_mm_min()
+    cap_lo = ProcessParams(max_force_N=300).mechanistic_feed_cap_mm_min()
+    check(cap_lo < cap_hi, "tighter force limit lowers the feed cap",
+          f"({cap_lo:.0f} < {cap_hi:.0f})")
+    # an under-powered spindle on a heavy slot is flagged infeasible
+    check(not ProcessParams(ap=20, ae=12, spindle_power_kW=2.0).feed_feasible(),
+          "heavy cut on a 2 kW spindle is infeasible")
+    # pipeline surfaces the forces, finite and positive
+    r = compute(Params(strategy="global"))
+    check(r["cut_force_peak_N"] > 0 and r["cut_power_W"] > 0 and r["feed_feasible"],
+          "pipeline reports cutting force/power", f"({r['cut_force_peak_N']:.0f} N)")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)

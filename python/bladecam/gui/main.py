@@ -544,6 +544,9 @@ class MainWindow(QtWidgets.QMainWindow):
             ("collision-free", str(r["collision_free"])),
             ("machine", r.get("machine_name", "—")),
             ("reachable", _reach_str(r)),
+            ("cut force (peak)", f"{r.get('cut_force_peak_N', 0.0):.0f} N"),
+            ("cut power", f"{r.get('cut_power_W', 0.0)/1000.0:.2f} kW"),
+            ("feed feasible", str(r.get("feed_feasible", True))),
         ]
         self.results_tbl.setRowCount(len(rows))
         for i, (k, v) in enumerate(rows):
