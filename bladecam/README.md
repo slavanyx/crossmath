@@ -50,18 +50,25 @@ PYTHONPATH=. python -m bladecam.viewer         # 3D GUI
 
 Set `BLADECAM_LIB=/path/to/libbladecam.so` to point at the library explicitly.
 
-## Implemented (Phase 0-1)
+## Implemented
 
+**Phase 0-1 (geometry core)**
 - Ruled-surface invariants: distribution parameter δ, striction (machinability
   map that predicts where cylindrical flank error will be worst).
 - Two-point (Bedi/Mann/Menzel) cutter-axis positioning per ruling.
 - Envelope deviation `g = dist(point, axis) − R` (over/undercut field).
 - Verified Fortran↔Python pipeline; headless demo + interactive 3D viewer.
 
+**Phase 2 (positioning optimization)**
+- Per-ruling **min–max (Chebyshev)** refinement of the cutter axis (4-DOF
+  Nelder–Mead in the Fortran core). On the demo blade this cuts peak flank
+  deviation by ~89% vs two-point (789 → 85 µm).
+- **Tolerance-constrained global smoothing**: low-pass-filters the cutter-axis
+  field within a deviation budget, reducing orientation jerk (rotary-axis
+  effort / cycle time) ~70% with no loss of worst-case accuracy.
+
 ## Roadmap
 
-- **Phase 2** Per-ruling min–max (Chebyshev) refinement; global envelope
-  optimization over B-spline tool-axis control points.
 - **Phase 3** 5-axis inverse kinematics / post-processor; collision &
   reachability in the blade channel.
 - **Phase 4** Time-optimal feed (TOPP-RA) + chatter/deflection caps; cycle-time

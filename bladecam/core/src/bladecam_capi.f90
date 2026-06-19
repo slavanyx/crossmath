@@ -9,6 +9,7 @@ module bladecam_capi
   use vec3_mod,   only: dp
   use ruled_mod,  only: distribution
   use flank_mod,  only: two_point, deviation
+  use flank_opt_mod, only: refine_minmax
   implicit none
 
 contains
@@ -37,5 +38,15 @@ contains
     real(c_double), intent(out) :: g(npts)
     call deviation(q0, alpha, R, pts, npts, g)
   end subroutine bc_deviation
+
+  subroutine bc_refine_minmax(a_pt, ap, b_pt, bp, R, nv, q0, alpha, emax) &
+       bind(C, name="bc_refine_minmax")
+    real(c_double), intent(in)  :: a_pt(3), ap(3), b_pt(3), bp(3)
+    real(c_double), value       :: R
+    integer(c_int), value       :: nv
+    real(c_double), intent(out) :: q0(3), alpha(3)
+    real(c_double), intent(out) :: emax
+    call refine_minmax(a_pt, ap, b_pt, bp, R, nv, q0, alpha, emax)
+  end subroutine bc_refine_minmax
 
 end module bladecam_capi
