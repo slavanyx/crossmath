@@ -258,13 +258,17 @@ contains
 
   !> Sum of radial overcut (R - dist) of the given axis into neighbouring
   !> rulings' surface points, over a +/- ctx_window index window. Normalised by R.
+  !> Uses the FINITE engaged flute [0, Lflute] (lambda clamped), matching the
+  !> swept_deviation metric -- the infinite axis line over-penalises neighbour
+  !> points that project beyond the flute and would make the optimiser over-tilt.
   function swept_penalty(q0, ahat) result(pen)
     real(dp), intent(in) :: q0(3), ahat(3)
-    real(dp) :: pen, ptn(3), wn(3), dn, vv
+    real(dp) :: pen, ptn(3), wn(3), dn, vv, lam, Lflute
     integer  :: j, m, jlo, jhi, nfull
     integer, parameter :: npen = 9
     pen = 0.0_dp
     nfull = size(ctx_aa, 2)
+    Lflute = norm3(ctx_bb(:, ctx_idx) - ctx_aa(:, ctx_idx))
     jlo = max(1, ctx_idx - ctx_window)
     jhi = min(nfull, ctx_idx + ctx_window)
     do j = jlo, jhi
@@ -273,7 +277,9 @@ contains
         vv = real(m - 1, dp) / real(npen - 1, dp)
         ptn = (1.0_dp - vv) * ctx_aa(:, j) + vv * ctx_bb(:, j)
         wn = ptn - q0
-        dn = norm3(wn - dot3(wn, ahat) * ahat)
+        lam = dot3(wn, ahat)
+        lam = max(0.0_dp, min(Lflute, lam))      ! finite engaged flute
+        dn = norm3(wn - lam * ahat)
         if (dn < ctx_R) pen = pen + (ctx_R - dn) / ctx_R
       end do
     end do

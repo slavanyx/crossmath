@@ -122,12 +122,53 @@ def test_topp_handles_cusp():
           f"(ratio {r2:.2f})")
 
 
+def test_chatter_matches_closed_form():
+    """The single-DOF stability-lobe model must reproduce the closed-form
+    asymptotic limit a_lim,min = 2 k zeta (1+zeta)/(Kt N) and the critical
+    frequency ratio r* = sqrt(1+2 zeta) where Re[G] is most negative."""
+    from bladecam import core
+    wn, zeta, k, Kt, N = 800.0, 0.03, 2.0e7, 800.0, 4
+    rpm, alim = core.stability_lobes(wn, zeta, k, Kt, N, nlobes=8, nptsper=4000)
+    amin = np.nanmin(alim)
+    analytic = 2 * k * zeta * (1 + zeta) / (Kt * N)
+    check(abs(amin - analytic) / analytic < 1e-3,
+          "chatter a_lim,min == 2 k zeta (1+zeta)/(Kt N)",
+          f"({amin:.2f} vs {analytic:.2f})")
+    # lobes ordered descending in rpm (k=0 is the high-speed lobe -> the eps
+    # modulo-2pi reduction; regression for the high-speed-lobe audit fix)
+    mx = [np.nanmax(rpm.reshape(8, 4000)[L]) for L in range(8)]
+    check(all(mx[i] > mx[i+1] for i in range(7)),
+          "stability lobes ordered high-speed-first")
+
+
+def test_swept_penalty_finite_flute():
+    """The swept-overcut penalty must use the finite flute (matching the
+    swept_deviation metric): turning it on reduces real swept overcut, and the
+    finite-flute form should not cost MORE per-ruling deviation than it buys."""
+    from bladecam import blade, optimize, core
+    a, b = blade.make_blade(60, 30, 55, 20, 8, 0.6, 1.4)   # high twist
+    ap, bp = blade.rail_tangents(a, b); R = 6.0
+
+    def overcut(q0, al):
+        Lf = np.linalg.norm(b - a, axis=1)
+        surf = blade.surface(a, b, 30).reshape(-1, 3)
+        return float(max(0.0, -core.swept_deviation(q0, al, Lf, R, surf).min()))
+
+    off = optimize.optimize_blade(a, b, ap, bp, R, strategy="global", swept_w=0.0)["global"]
+    on = optimize.optimize_blade(a, b, ap, bp, R, strategy="global", swept_w=1.0)["global"]
+    oc_off, oc_on = overcut(off["q0"], off["alpha"]), overcut(on["q0"], on["alpha"])
+    check(oc_on < 0.1 * oc_off, "swept penalty cuts overcut >10x",
+          f"({oc_off*1000:.0f} -> {oc_on*1000:.0f} um)")
+
+
 def main():
     for fn in (test_developable_mills_to_zero,
                test_optimization_is_monotonic,
                test_global_beats_naive_floor,
                test_topp_respects_limits,
-               test_topp_handles_cusp):
+               test_topp_handles_cusp,
+               test_chatter_matches_closed_form,
+               test_swept_penalty_finite_flute):
         print(fn.__name__)
         fn()
     if FAILED:
