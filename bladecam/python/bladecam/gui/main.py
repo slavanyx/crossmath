@@ -259,6 +259,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("feed cap", f"{r['feed_cap_mm_min']:.0f} mm/min"),
             ("min clearance", f"{r['min_clearance']:.2f} mm"),
             ("collision-free", str(r["collision_free"])),
+            ("gouge depth", f"{r.get('gouge_max', 0.0)*1000:.1f} µm"),
         ]
         self.results_tbl.setRowCount(len(rows))
         for i, (k, v) in enumerate(rows):
