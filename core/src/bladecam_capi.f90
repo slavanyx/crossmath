@@ -10,6 +10,8 @@ module bladecam_capi
   use ruled_mod,  only: distribution
   use flank_mod,  only: two_point, deviation
   use flank_opt_mod, only: refine_minmax
+  use kinematics_mod, only: inverse_kin_ac
+  use topp_mod, only: topp_ra
   implicit none
 
 contains
@@ -48,5 +50,28 @@ contains
     real(c_double), intent(out) :: emax
     call refine_minmax(a_pt, ap, b_pt, bp, R, nv, q0, alpha, emax)
   end subroutine bc_refine_minmax
+
+  !> Batch 5-axis inverse kinematics: contact points Q(3,npts) and tool axes
+  !> O(3,npts) -> machine axes m(5,npts) = [X,Y,Z,A,C] (A,C in radians).
+  subroutine bc_ik_path(Q, O, npts, piv, m) bind(C, name="bc_ik_path")
+    integer(c_int), value :: npts
+    real(c_double), intent(in)  :: Q(3, npts), O(3, npts), piv(3)
+    real(c_double), intent(out) :: m(5, npts)
+    integer :: k
+    do k = 1, npts
+      call inverse_kin_ac(Q(:, k), O(:, k), piv, m(:, k))
+    end do
+  end subroutine bc_ik_path
+
+  !> Time-optimal parameterization of a joint path q(ndof,n).
+  subroutine bc_topp(q, ndof, n, vmax, amax, a0, aN, aprof, ttotal) &
+       bind(C, name="bc_topp")
+    integer(c_int), value :: ndof, n
+    real(c_double), intent(in)  :: q(ndof, n), vmax(ndof), amax(ndof)
+    real(c_double), value       :: a0, aN
+    real(c_double), intent(out) :: aprof(n)
+    real(c_double), intent(out) :: ttotal
+    call topp_ra(q, ndof, n, vmax, amax, a0, aN, aprof, ttotal)
+  end subroutine bc_topp
 
 end module bladecam_capi

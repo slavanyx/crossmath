@@ -4,6 +4,8 @@ program test_core
   use ruled_mod
   use flank_mod
   use flank_opt_mod
+  use kinematics_mod
+  use topp_mod
   implicit none
 
   integer :: nfail
@@ -14,6 +16,8 @@ program test_core
   call test_distribution_cylinder(nfail)
   call test_distribution_twisted(nfail)
   call test_refine_improves(nfail)
+  call test_ik_roundtrip(nfail)
+  call test_topp_straight(nfail)
 
   if (nfail == 0) then
     print *, "ALL TESTS PASSED"
@@ -122,5 +126,39 @@ contains
     call check(e_ref <= e_two + 1.0e-9_dp, "refine: not worse than two-point", nfail)
     call check(e_ref < 0.99_dp * e_two, "refine: strictly improves warped ruling", nfail)
   end subroutine test_refine_improves
+
+  !> Inverse kinematics followed by forward kinematics must recover the
+  !> original contact point and tool axis.
+  subroutine test_ik_roundtrip(nfail)
+    integer, intent(inout) :: nfail
+    real(dp) :: Q(3), O(3), piv(3), m(5), Q2(3), O2(3)
+    piv = [0.0_dp, 0.0_dp, -50.0_dp]
+    Q = [12.0_dp, -7.0_dp, 30.0_dp]
+    O = unit3([0.3_dp, 0.4_dp, 0.866_dp])
+    call inverse_kin_ac(Q, O, piv, m)
+    call forward_kin_ac(m, piv, Q2, O2)
+    call check(norm3(Q2 - Q) < 1.0e-9_dp, "IK round-trip: point", nfail)
+    call check(norm3(O2 - O) < 1.0e-9_dp, "IK round-trip: axis", nfail)
+  end subroutine test_ik_roundtrip
+
+  !> TOPP on a single straight axis of length Lp with symmetric accel should
+  !> match the trapezoidal/triangular-profile time within discretisation.
+  subroutine test_topp_straight(nfail)
+    integer, intent(inout) :: nfail
+    integer, parameter :: n = 201
+    real(dp) :: q(1, n), vmax(1), amax(1), aprof(n), ttot, Lp, tref
+    integer :: k
+    Lp = 100.0_dp
+    do k = 1, n
+      q(1, k) = Lp * real(k - 1, dp) / real(n - 1, dp)
+    end do
+    vmax(1) = 50.0_dp     ! mm/s
+    amax(1) = 500.0_dp    ! mm/s^2
+    call topp_ra(q, 1, n, vmax, amax, 0.0_dp, 0.0_dp, aprof, ttot)
+    ! analytic trapezoid: t = L/vmax + vmax/amax  (reaches cruise: L > vmax^2/amax)
+    tref = Lp/vmax(1) + vmax(1)/amax(1)
+    call check(abs(ttot - tref) / tref < 0.02_dp, "TOPP straight-axis time", nfail)
+    call check(maxval(aprof) <= vmax(1)**2 + 1.0e-6_dp, "TOPP respects vmax", nfail)
+  end subroutine test_topp_straight
 
 end program test_core
