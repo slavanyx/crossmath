@@ -13,6 +13,7 @@ module bladecam_capi
   use kinematics_mod, only: inverse_kin_ac
   use topp_mod, only: topp_ra
   use chatter_mod, only: stability_lobes, stability_lobes_frf
+  use collision_mod, only: tool_clearance
   implicit none
 
 contains
@@ -129,5 +130,16 @@ contains
     real(c_double), intent(out) :: ttotal
     call topp_ra(q, ndof, n, vmax, amax, a0, aN, aprof, ttotal)
   end subroutine bc_topp
+
+  !> Tool+holder clearance to an obstacle cloud, per station. clr(nu) < 0 means
+  !> collision/gouge.
+  subroutine bc_tool_clearance(q0, alpha, R, Lf, Rh, gap, Lh, nu, pts, npts, clr) &
+       bind(C, name="bc_tool_clearance")
+    integer(c_int), value :: nu, npts
+    real(c_double), intent(in)  :: q0(3,nu), alpha(3,nu), pts(3,npts)
+    real(c_double), value       :: R, Lf, Rh, gap, Lh
+    real(c_double), intent(out) :: clr(nu)
+    call tool_clearance(q0, alpha, R, Lf, Rh, gap, Lh, nu, pts, npts, clr)
+  end subroutine bc_tool_clearance
 
 end module bladecam_capi

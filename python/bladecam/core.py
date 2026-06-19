@@ -56,6 +56,8 @@ _lib.bc_optimize_global.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int, c_double,
 _lib.bc_optimize_double_flank.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int,
                                           c_double, c_int, c_double, c_double,
                                           c_int, _DBL, _DBL, _DBL, _DBL]
+_lib.bc_tool_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
+                                   c_double, c_double, c_int, _DBL, c_int, _DBL]
 _lib.bc_ik_path.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
@@ -194,6 +196,18 @@ def optimize_double_flank(aL, bL, aR, bR, R: float, nv: int = 41,
                                   c_double(gamma), c_int(nsweeps),
                                   _ptr(q0), _ptr(alpha), _ptr(devL), _ptr(devR))
     return q0, alpha, devL, devR
+
+
+def tool_clearance(q0, alpha, pts, R, flute_len, holder_R, gap, holder_len):
+    """Per-station signed clearance of the tool+holder to an obstacle cloud.
+    q0,alpha are (nu,3); pts is (npts,3). Returns clr (nu,); <0 = collision."""
+    q0 = _c(q0); alpha = _c(alpha); pts = _c(pts)
+    nu = q0.shape[0]; npts = pts.shape[0]
+    clr = np.empty(nu, dtype=np.float64)
+    _lib.bc_tool_clearance(_ptr(q0), _ptr(alpha), c_double(R), c_double(flute_len),
+                           c_double(holder_R), c_double(gap), c_double(holder_len),
+                           c_int(nu), _ptr(pts), c_int(npts), _ptr(clr))
+    return clr
 
 
 def ik_path(Q: np.ndarray, O: np.ndarray, pivot) -> np.ndarray:

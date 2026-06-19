@@ -39,17 +39,6 @@ class Params:
     pivot: tuple = (0.0, 0.0, -100.0)
 
 
-def _seg_distance(points, p0, p1):
-    """Min distance from each point to segment [p0,p1] (vectorized)."""
-    d = p1 - p0
-    L2 = float(d @ d)
-    if L2 < 1e-12:
-        return np.linalg.norm(points - p0, axis=1)
-    t = np.clip((points - p0) @ d / L2, 0.0, 1.0)
-    proj = p0[None, :] + t[:, None] * d[None, :]
-    return np.linalg.norm(points - proj, axis=1)
-
-
 def double_flank_channel(p: Params) -> dict:
     """Double-flank channel milling: one cylinder finishes both walls of the
     flow channel (this blade's wall and the adjacent blade's facing wall) in a
@@ -106,17 +95,19 @@ def compute(p: Params) -> dict:
     m[:, 3] = np.unwrap(m[:, 3])                      # unwrap A, C for TOPP
     m[:, 4] = np.unwrap(m[:, 4])
 
-    # --- collision / reachability vs neighbour blade ---
+    # --- collision (tool + holder vs neighbour blades) and gouge ---
     pitch = 2.0 * np.pi / p.n_blades
-    cph, sph = np.cos(pitch), np.sin(pitch)
-    Rz = np.array([[cph, -sph, 0.0], [sph, cph, 0.0], [0.0, 0.0, 1.0]])
-    neigh = (surf.reshape(-1, 3) @ Rz.T)
-    min_clear = np.inf
-    for i in range(nu):
-        seg0 = q0[i] - alpha[i] * 0.2 * p.process.flute_len
-        seg1 = q0[i] + alpha[i] * p.process.flute_len
-        min_clear = min(min_clear, _seg_distance(neigh, seg0, seg1).min())
-    collision_free = bool(min_clear > p.R)
+    def _rotz(ang):
+        c, s = np.cos(ang), np.sin(ang)
+        return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    flat = surf.reshape(-1, 3)
+    obstacles = np.vstack([flat @ _rotz(pitch).T, flat @ _rotz(-pitch).T])
+    pr = p.process
+    clr = core.tool_clearance(q0, alpha, obstacles, p.R, pr.flute_len,
+                              pr.holder_dia * 0.5, pr.holder_gap, pr.holder_len)
+    min_clear = float(clr.min())
+    collision_free = bool(min_clear > 0.0)
+    gouge_max = float(max(0.0, -devfield.min()))   # depth the tool digs past the design surface
 
     # --- Phase 4: time-optimal feed ---
     # contact-path arc length as an extra DOF carrying the process feed cap
@@ -132,6 +123,7 @@ def compute(p: Params) -> dict:
         delta=delta, q0=q0, alpha=alpha, dev=dev,
         machine_path=m, aprof=aprof, cycle_time_s=cycle_s,
         min_clearance=min_clear, collision_free=collision_free,
+        gouge_max=gouge_max, clearance=clr,
         orient_jerk=optimize.orientation_jerk(alpha),
         contact=contact, seglen=seglen,
         feed_cap_mm_min=p.process.effective_feed_mm_min(),
