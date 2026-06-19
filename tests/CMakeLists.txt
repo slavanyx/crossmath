@@ -15,6 +15,18 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_audit_regressions.py)
   set_tests_properties(audit_regressions PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Physics-validation tests (developable exact case, optimization monotonicity)
+  add_test(NAME validation
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_validation.py)
+  set_tests_properties(validation PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # STEP/IGES import round-trip (skips gracefully without OpenCASCADE)
+  add_test(NAME cad_step
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_cad_step.py)
+  set_tests_properties(cad_step PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
