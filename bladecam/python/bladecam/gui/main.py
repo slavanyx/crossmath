@@ -75,6 +75,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(opm, "Flank finish (live)", lambda: self.recompute(compare=True))
         self._act(opm, "Double-flank channel", self.show_double_flank)
         self._act(opm, "Channel roughing (show passes)", self.show_roughing)
+        self._act(opm, "Channel roughing — trochoidal", self.show_trochoidal)
         self._act(opm, "Edge finishing (point-mill)", self.show_edge_finish)
         opm.addSeparator()
         self._act(opm, "Process plan (full report)", self.show_process_plan)
@@ -407,6 +408,18 @@ class MainWindow(QtWidgets.QMainWindow):
             f"roughing: {rg['n_axial']}×{rg['n_radial']} passes, "
             f"{rg['total_len_mm']:.0f} mm, {rg['cycle_s']:.0f} s, "
             f"vol {rg['removed_volume_mm3']:.0f} mm³")
+
+    def show_trochoidal(self):
+        """Visualise the engagement-controlled trochoidal roughing coil."""
+        from ..pipeline import rough_channel_trochoidal
+        r = rough_channel_trochoidal(self.model.build_params())
+        self.plotter.clear()
+        self.plotter.add_mesh(pv.lines_from_points(r["points"]),
+                              color="#ff7f0e", line_width=1)
+        self.plotter.reset_camera(); self._overlay = None
+        self.status.showMessage(
+            f"trochoidal: {r['n_loops']} loops, engagement {r['engagement_deg']:.0f}°, "
+            f"{r['path_len_mm']:.0f} mm, {r['cycle_s']:.0f} s")
 
     def show_edge_finish(self):
         """Visualise point-mill (ball-nose) rows on the leading-edge patch."""
