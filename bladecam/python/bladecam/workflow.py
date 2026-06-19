@@ -35,6 +35,16 @@ STAGES = [
 
 STAGE_KEYS = tuple(k for k, *_ in STAGES)
 
+# the bottom analysis tab most relevant to each stage, so stepping the workflow
+# also brings the matching chart forward (names match the GUI's tab labels)
+STAGE_CHART = {
+    "geometry":     "Machinability",   # delta / machinability index vs station
+    "positioning":  "Deviation",       # per-strategy flank deviation
+    "kinematics":   "Feed",            # realised speed-along-path of the motion
+    "feed":         "Feed",            # the time-optimal feed schedule itself
+    "verification": "Chatter",         # process-stability (chatter) check
+}
+
 
 def _axis_segments(q0, alpha, every, back, fwd):
     """Tool-axis line segments (one per sampled station)."""
