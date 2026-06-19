@@ -61,6 +61,8 @@ _lib.bc_tool_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
 _lib.bc_swept_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
                                     c_double, c_double, c_int, _DBL, c_int,
                                     c_int, _DBL]
+_lib.bc_holder_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
+                                     c_int, _DBL, c_int, _DBL]
 _lib.bc_swept_deviation.argtypes = [_DBL, _DBL, _DBL, c_double, c_int,
                                     _DBL, c_int, _DBL]
 _lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
@@ -232,6 +234,20 @@ def swept_clearance(q0, alpha, pts, R, flute_len, holder_R, gap, holder_len,
                             c_double(holder_R), c_double(gap), c_double(holder_len),
                             c_int(nu), _ptr(pts), c_int(npts), c_int(nscan),
                             _ptr(clr))
+    return clr
+
+
+def holder_clearance(q0, alpha, pts, holder_R, base, holder_len):
+    """Per-station clearance of the HOLDER alone (capped cylinder at axial
+    [base, base+holder_len], radius holder_R) to an obstacle cloud -- the check
+    that applies to the blade being machined (where the flute is tangent by
+    design). q0,alpha are (nu,3); pts is (npts,3). Returns clr (nu,); <0 = hit."""
+    q0 = _c(q0); alpha = _c(alpha); pts = _c(pts)
+    nu = q0.shape[0]; npts = pts.shape[0]
+    clr = np.empty(nu, dtype=np.float64)
+    _lib.bc_holder_clearance(_ptr(q0), _ptr(alpha), c_double(holder_R),
+                             c_double(base), c_double(holder_len), c_int(nu),
+                             _ptr(pts), c_int(npts), _ptr(clr))
     return clr
 
 
