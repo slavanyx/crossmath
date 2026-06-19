@@ -10,7 +10,7 @@
 !>   optimised jointly (unlike min-max followed by a separate smoothing pass).
 module flank_opt_mod
   use vec3_mod
-  use flank_mod, only: two_point, deviation
+  use flank_mod, only: two_point, deviation_cone
   implicit none
   private
   public :: refine_minmax, optimize_global
@@ -24,6 +24,7 @@ module flank_opt_mod
   real(dp) :: ctx_mu = 0.0_dp           ! smoothness penalty weight
   real(dp) :: ctx_alpha_nb(3) = 0.0_dp  ! neighbour axis target
   real(dp) :: ctx_q0_nb(3) = 0.0_dp     ! neighbour point target
+  real(dp) :: ctx_gamma = 0.0_dp        ! tool taper half-angle (0 = cylinder)
   real(dp), parameter :: ctx_wq = 0.01_dp  ! relative weight of point penalty
 
 contains
@@ -33,18 +34,20 @@ contains
     integer,  intent(in)  :: nv
     real(dp), intent(out) :: q0(3), alpha(3), emax
     real(dp) :: alpha0(3), q00(3)
+    ctx_gamma = 0.0_dp
     call two_point(a_pt, ap, b_pt, bp, R, q00, alpha0)
     call refine_seeded(a_pt, b_pt, R, nv, alpha0, q00, 0.0_dp, &
                        alpha0, q00, q0, alpha, emax)
   end subroutine refine_minmax
 
-  subroutine optimize_global(a, b, ap, bp, nu, R, nv, mu, nsweeps, &
+  subroutine optimize_global(a, b, ap, bp, nu, R, nv, mu, gamma, nsweeps, &
                              q0, alpha, dev)
     integer,  intent(in)  :: nu, nv, nsweeps
-    real(dp), intent(in)  :: a(3,nu), b(3,nu), ap(3,nu), bp(3,nu), R, mu
+    real(dp), intent(in)  :: a(3,nu), b(3,nu), ap(3,nu), bp(3,nu), R, mu, gamma
     real(dp), intent(out) :: q0(3,nu), alpha(3,nu), dev(nu)
     integer  :: i, sw, lo, hi
     real(dp) :: anb(3), qnb(3), e
+    ctx_gamma = gamma
 
     ! initialise from two-point
     do i = 1, nu
@@ -108,7 +111,7 @@ contains
     do j = 1, nv
       v = real(j - 1, dp) / real(nv - 1, dp)
       pt = (1.0_dp - v) * a_pt + v * b_pt
-      call deviation(q0, alpha, R, pt, 1, g)
+      call deviation_cone(q0, alpha, R, ctx_gamma, pt, 1, g)
       emax = max(emax, abs(g(1)))
     end do
   end function peak_dev
@@ -129,7 +132,7 @@ contains
     do j = 1, ctx_nv
       v = real(j - 1, dp) / real(ctx_nv - 1, dp)
       pt = (1.0_dp - v) * ctx_a + v * ctx_b
-      call deviation(q0, alpha, ctx_R, pt, 1, g)
+      call deviation_cone(q0, alpha, ctx_R, ctx_gamma, pt, 1, g)
       f = max(f, abs(g(1)))
     end do
     if (ctx_mu > 0.0_dp) then

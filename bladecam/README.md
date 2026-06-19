@@ -108,11 +108,19 @@ matplotlib):
 
   Run: `PYTHONPATH=. python -m bladecam.viewer` (or `-m bladecam.gui.main`).
 
+**Phase 6 (advanced tooling & process)**
+- **Conical / barrel tool support** (`deviation_cone`, taper half-angle γ
+  threaded through the global optimizer): γ=0 reduces exactly to a cylinder; a
+  cone matched to a tapered ruling drives deviation to zero. Exposed as the
+  `gamma` parameter (GUI "Tool taper γ").
+- **Chatter stability lobes** (`chatter.f90`, single-DOF Altintas model):
+  `a_lim` vs spindle speed from tool-tip modal parameters; new GUI "Chatter"
+  analysis tab. More damping raises the stable depth (verified).
+
 ## Roadmap
 
 - STEP/IGES import via OpenCASCADE (pythonocc).
-- Chatter stability-lobe model from a measured tool-tip FRF.
-- Conical/barrel tool support for strongly warped blades.
+- Stability lobes from a *measured* tool-tip FRF (replace the modal model).
 - Double-flank milling of thin blades (one tool, both sides).
 
 See the design notes for the governing formulas behind each phase.

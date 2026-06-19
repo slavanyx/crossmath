@@ -6,6 +6,7 @@ program test_core
   use flank_opt_mod
   use kinematics_mod
   use topp_mod
+  use chatter_mod
   implicit none
 
   integer :: nfail
@@ -19,6 +20,8 @@ program test_core
   call test_ik_roundtrip(nfail)
   call test_topp_straight(nfail)
   call test_global_smoother(nfail)
+  call test_cone_reduces_cylinder(nfail)
+  call test_chatter_lobes(nfail)
 
   if (nfail == 0) then
     print *, "ALL TESTS PASSED"
@@ -187,13 +190,45 @@ contains
         ap(:,i) = 0.5_dp*(a(:,i+1)-a(:,i-1)); bp(:,i) = 0.5_dp*(b(:,i+1)-b(:,i-1))
       end if
     end do
-    call optimize_global(a, b, ap, bp, nu, R, nv, 0.0_dp,  3, q0, al0, dev0)
-    call optimize_global(a, b, ap, bp, nu, R, nv, 50.0_dp, 6, q0, alm, devm)
+    call optimize_global(a, b, ap, bp, nu, R, nv, 0.0_dp,  0.0_dp, 3, q0, al0, dev0)
+    call optimize_global(a, b, ap, bp, nu, R, nv, 50.0_dp, 0.0_dp, 6, q0, alm, devm)
     rough0 = axis_roughness(al0, nu)
     roughm = axis_roughness(alm, nu)
     call check(roughm < rough0, "global: penalty yields smoother axis field", nfail)
     call check(maxval(devm) < 5.0_dp, "global: deviation stays bounded", nfail)
   end subroutine test_global_smoother
+
+  !> Conical deviation with gamma=0 must equal the cylindrical deviation;
+  !> and a cone matched to a tapered point set reduces the deviation.
+  subroutine test_cone_reduces_cylinder(nfail)
+    integer, intent(inout) :: nfail
+    real(dp) :: q0(3), alpha(3), pts(3,3), gc(3), gz(3), R, gam
+    integer :: j
+    R = 2.0_dp
+    q0 = [0.0_dp, 0.0_dp, 0.0_dp]; alpha = [0.0_dp, 0.0_dp, 1.0_dp]
+    pts(:,1) = [2.0_dp, 0.0_dp, 0.0_dp]
+    pts(:,2) = [3.0_dp, 0.0_dp, 5.0_dp]
+    pts(:,3) = [4.0_dp, 0.0_dp, 10.0_dp]
+    call deviation(q0, alpha, R, pts, 3, gz)
+    call deviation_cone(q0, alpha, R, 0.0_dp, pts, 3, gc)
+    call check(maxval(abs(gc - gz)) < 1.0e-12_dp, "cone gamma=0 == cylinder", nfail)
+    ! these points lie on a cone of slope (radius grows 2->4 over lambda 0->10)
+    gam = atan(0.2_dp)
+    call deviation_cone(q0, alpha, R, gam, pts, 3, gc)
+    call check(maxval(abs(gc)) < 1.0e-9_dp, "matched cone: zero deviation", nfail)
+  end subroutine test_cone_reduces_cylinder
+
+  !> Stability lobes: depths positive/finite, and more damping raises the
+  !> minimum stable depth.
+  subroutine test_chatter_lobes(nfail)
+    integer, intent(inout) :: nfail
+    integer, parameter :: nl = 4, np = 50, ntot = nl*np
+    real(dp) :: rpm(ntot), a1(ntot), a2(ntot)
+    call stability_lobes(800.0_dp, 0.03_dp, 2.0e7_dp, 800.0_dp, 4, nl, np, rpm, a1)
+    call stability_lobes(800.0_dp, 0.06_dp, 2.0e7_dp, 800.0_dp, 4, nl, np, rpm, a2)
+    call check(all(a1 > 0.0_dp) .and. all(rpm > 0.0_dp), "lobes positive/finite", nfail)
+    call check(minval(a2) > minval(a1), "more damping -> higher stable depth", nfail)
+  end subroutine test_chatter_lobes
 
   function axis_roughness(al, nu) result(r)
     integer, intent(in) :: nu

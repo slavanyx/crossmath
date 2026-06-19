@@ -3,7 +3,7 @@ module flank_mod
   use vec3_mod
   implicit none
   private
-  public :: two_point, deviation, max_dev_ruling
+  public :: two_point, deviation, deviation_cone, max_dev_ruling
 
 contains
 
@@ -43,6 +43,26 @@ contains
       g(i) = norm3(perp) - R
     end do
   end subroutine deviation
+
+  !> Signed deviation for a CONICAL tool: local radius rho(lambda)=R+lambda*tan(g)
+  !> where lambda is the axial coordinate from q0 along alpha. The radial gap is
+  !> projected onto the cone surface normal (factor cos g). gamma=0 -> cylinder.
+  subroutine deviation_cone(q0, alpha, R, gamma, pts, npts, g)
+    integer, intent(in)  :: npts
+    real(dp), intent(in) :: q0(3), alpha(3), R, gamma, pts(3, npts)
+    real(dp), intent(out) :: g(npts)
+    integer :: i
+    real(dp) :: ahat(3), w(3), perp(3), lam, rho, tg, cg
+    ahat = unit3(alpha)
+    tg = tan(gamma); cg = cos(gamma)
+    do i = 1, npts
+      w = pts(:, i) - q0
+      lam = dot3(w, ahat)
+      perp = w - lam * ahat
+      rho = R + lam * tg
+      g(i) = (norm3(perp) - rho) * cg
+    end do
+  end subroutine deviation_cone
 
   !> Convenience: max |g| along a single ruling sampled at nv stations,
   !> for a given cutter axis. Returns the peak absolute deviation.

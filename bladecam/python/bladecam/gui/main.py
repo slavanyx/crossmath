@@ -130,7 +130,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dock = QtWidgets.QDockWidget("Analysis", self)
         self.tabs = QtWidgets.QTabWidget()
         self.canvases = {}
-        for name in ("Deviation", "Machinability", "Feed", "Compare"):
+        for name in ("Deviation", "Machinability", "Feed", "Compare", "Chatter"):
             from matplotlib.figure import Figure
             c = FigureCanvasQTAgg(Figure(figsize=(5, 3)))
             self.canvases[name] = c
@@ -165,6 +165,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_chart("Machinability",
                            charts.machinability_chart, r["delta"], r["dev"])
         self._update_chart("Feed", charts.feed_chart, r["seglen"], r["aprof"])
+        self._update_chatter()
         coll = "OK" if r["collision_free"] else "COLLISION"
         self.status.showMessage(
             f"cycle {r['cycle_time_s']:.2f}s   peak dev "
@@ -250,6 +251,18 @@ class MainWindow(QtWidgets.QMainWindow):
         for i, (k, v) in enumerate(rows):
             self.results_tbl.setItem(i, 0, QtWidgets.QTableWidgetItem(k))
             self.results_tbl.setItem(i, 1, QtWidgets.QTableWidgetItem(v))
+
+    def _update_chatter(self):
+        """Stability lobes from default tool-tip modal params (illustrative)."""
+        from .. import core
+        from ..process import ProcessParams
+        Kt = ProcessParams().Kt
+        nlobes, nptsper = 6, 80
+        # modal params: 800 Hz tool-tip mode, 3% damping, 2e4 N/mm stiffness
+        rpm, alim = core.stability_lobes(800.0, 0.03, 2.0e4, Kt,
+                                         n_teeth=4, nlobes=nlobes, nptsper=nptsper)
+        self._update_chart("Chatter", charts.chatter_chart,
+                           rpm, alim, nlobes, nptsper, ProcessParams().rpm)
 
     def _update_chart(self, tab, fn, *args):
         c = self.canvases[tab]

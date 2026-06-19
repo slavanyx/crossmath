@@ -50,10 +50,13 @@ _lib.bc_deviation.argtypes = [_DBL, _DBL, c_double, _DBL, c_int, _DBL]
 _lib.bc_refine_minmax.argtypes = [_DBL, _DBL, _DBL, _DBL, c_double, c_int,
                                   _DBL, _DBL, _DBL]
 _lib.bc_optimize_global.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int, c_double,
-                                    c_int, c_double, c_int, _DBL, _DBL, _DBL]
+                                    c_int, c_double, c_double, c_int,
+                                    _DBL, _DBL, _DBL]
 _lib.bc_ik_path.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
+_lib.bc_stability_lobes.argtypes = [c_double, c_double, c_double, c_double,
+                                    c_int, c_int, c_int, _DBL, _DBL]
 
 
 def _c(arr: np.ndarray) -> np.ndarray:
@@ -116,11 +119,11 @@ def refine_minmax(a_pt, ap, b_pt, bp, R: float, nv: int = 41):
 
 
 def optimize_global(a, b, ap, bp, R: float, nv: int = 41,
-                    mu: float = 30.0, nsweeps: int = 4):
+                    mu: float = 30.0, gamma: float = 0.0, nsweeps: int = 4):
     """Global envelope optimization over the whole blade (joint accuracy +
     smoothness). Rails a,b,ap,bp are (nu,3). Returns (q0[nu,3], alpha[nu,3],
-    dev[nu]). mu is the smoothness penalty weight; mu=0 reduces to per-ruling
-    min-max.
+    dev[nu]). mu is the smoothness penalty weight (mu=0 reduces to per-ruling
+    min-max); gamma is the tool taper half-angle in radians (0 = cylinder).
     """
     a = _c(a); b = _c(b); ap = _c(ap); bp = _c(bp)
     nu = a.shape[0]
@@ -128,9 +131,21 @@ def optimize_global(a, b, ap, bp, R: float, nv: int = 41,
     alpha = np.empty((nu, 3), dtype=np.float64)
     dev = np.empty(nu, dtype=np.float64)
     _lib.bc_optimize_global(_ptr(a), _ptr(b), _ptr(ap), _ptr(bp), c_int(nu),
-                            c_double(R), c_int(nv), c_double(mu), c_int(nsweeps),
-                            _ptr(q0), _ptr(alpha), _ptr(dev))
+                            c_double(R), c_int(nv), c_double(mu), c_double(gamma),
+                            c_int(nsweeps), _ptr(q0), _ptr(alpha), _ptr(dev))
     return q0, alpha, dev
+
+
+def stability_lobes(wn_hz: float, zeta: float, k_stiff: float, Kt: float,
+                    n_teeth: int = 4, nlobes: int = 6, nptsper: int = 80):
+    """Chatter stability-lobe diagram. Returns (rpm[], alim_mm[])."""
+    n = nlobes * nptsper
+    rpm = np.empty(n, dtype=np.float64)
+    alim = np.empty(n, dtype=np.float64)
+    _lib.bc_stability_lobes(c_double(wn_hz), c_double(zeta), c_double(k_stiff),
+                            c_double(Kt), c_int(n_teeth), c_int(nlobes),
+                            c_int(nptsper), _ptr(rpm), _ptr(alim))
+    return rpm, alim
 
 
 def ik_path(Q: np.ndarray, O: np.ndarray, pivot) -> np.ndarray:
