@@ -53,6 +53,20 @@ def main():
     check(abs(rem[0] - 13.0) < 1e-9, "overlapping poses union (13, not 20)",
           f"({rem[0]:.3f})")
 
+    # DISJOINT poses: two cylinders far apart along the ray, with a clear gap.
+    # removed must be the SUM of the two chords (union of two separate intervals),
+    # NOT a single merged span across the gap. Exercises the union accumulation
+    # and the (no-)merge logic that overlapping cases never reach.
+    q3 = np.array([[0., 0, 0], [30., 0, 0]])      # axes 30 mm apart along x
+    a3 = np.array([[0., 0, 1.], [0., 0, 1.]])
+    rem, fc = core.dexel_carve(q3, a3, R, np.array([20., 20.]),
+                               np.array([[-20., 0., 10.]]), np.array([[1., 0, 0]]),
+                               np.array([80.0]))
+    check(abs(rem[0] - 20.0) < 1e-9, "disjoint poses sum two chords (10+10)",
+          f"({rem[0]:.3f})")          # each chord = 2R = 10; gap not counted
+    check(abs(fc[0] - 15.0) < 1e-9, "first cut at the nearer interval",
+          f"({fc[0]:.3f})")            # start -20 + (20-5) = 15
+
     # removed volume vs analytic pi R^2 Lf
     vol = verify.removed_volume(q0, al, R, Lf, [-7, -7, 0], [7, 7, 20], n=160)
     exact = np.pi*R**2*20
