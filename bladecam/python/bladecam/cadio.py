@@ -240,6 +240,13 @@ def rails_from_shape(shape, nu: int = 60, face_index=None, ndetect: int = 11):
     The blade flank is taken as the largest face (or face_index). The ruling
     (hub->shroud) direction is auto-detected as the parameter whose isocurves
     are straightest; the two rails are that face's boundary curves across it.
+
+    Assumes an untrimmed (rectangular-UV) ruled-ish flank face -- the typical
+    output of a blade loft. For a (near-)planar or otherwise direction-ambiguous
+    face the choice is geometrically benign (deviation is ~0 either way); the
+    tie-break is deterministic. Trimmed faces whose valid region is not the full
+    UV box, and multi-face blisks, need an explicit face_index / edge-based
+    extraction (roadmap).
     """
     from OCP.TopExp import TopExp_Explorer
     from OCP.TopAbs import TopAbs_FACE
@@ -273,12 +280,15 @@ def rails_from_shape(shape, nu: int = 60, face_index=None, ndetect: int = 11):
                                                for t in kk])) for vv in vs])
 
     ps = np.linspace(0.0, 1.0, nu)
-    if resid_v <= resid_u:                      # v is the ruling direction
-        a = np.array([val(umin + t*(umax-umin), vmin) for t in ps])
-        b = np.array([val(umin + t*(umax-umin), vmax) for t in ps])
-    else:                                       # u is the ruling direction
+    # Deterministic tie-break: only treat u as the ruling direction when its
+    # isocurves are CLEARLY straighter than v's; otherwise default to v. This
+    # avoids floating-point noise flipping the choice on (near-)planar faces.
+    if resid_u < resid_v - 1e-6:                # u is the ruling (hub->shroud)
         a = np.array([val(umin, vmin + t*(vmax-vmin)) for t in ps])
         b = np.array([val(umax, vmin + t*(vmax-vmin)) for t in ps])
+    else:                                       # v is the ruling (hub->shroud)
+        a = np.array([val(umin + t*(umax-umin), vmin) for t in ps])
+        b = np.array([val(umin + t*(umax-umin), vmax) for t in ps])
     return np.ascontiguousarray(a), np.ascontiguousarray(b)
 
 
