@@ -115,6 +115,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage_lbl.setStyleSheet("font-weight: bold;")
         wf.addWidget(self.stage_lbl)
         wf.addAction("Next ▶", lambda: self._step_stage(+1))
+        self._trail = True
+        trail_act = wf.addAction("Sweep trail", self._toggle_trail)
+        trail_act.setCheckable(True)
+        trail_act.setChecked(True)
 
     def _build_3d_view(self):
         self.plotter = QtInteractor(self)
@@ -348,23 +352,50 @@ class MainWindow(QtWidgets.QMainWindow):
             self.results_tbl.setItem(i, 0, QtWidgets.QTableWidgetItem(str(k)))
             self.results_tbl.setItem(i, 1, QtWidgets.QTableWidgetItem(str(v)))
 
+    _TRAIL_N = 8   # number of fading ghost cutters behind the current one
+
     def _show_tool_at(self, i):
         """Render the cutter as a solid cylinder at station i (named actor, so
-        it is replaced rather than accumulated)."""
+        it is replaced rather than accumulated). When the trail is enabled, a
+        few fading ghost cutters behind it show the swept volume of the tool."""
         if not self.last:
             return
         r = self.last
-        i = int(np.clip(i, 0, r["q0"].shape[0] - 1))
-        q0, al = r["q0"][i], r["alpha"][i]
+        nu = r["q0"].shape[0]
+        i = int(np.clip(i, 0, nu - 1))
         R = self.model.values["R"]
         h = 30.0
-        cyl = pv.Cylinder(center=q0 + al * h * 0.5, direction=al,
-                          radius=R, height=h, resolution=40)
-        self.plotter.add_mesh(cyl, color="#d4af37", opacity=0.55, name="tool")
-        contact = r["contact"][i]
-        self.plotter.add_mesh(pv.Sphere(radius=R*0.18, center=contact),
+
+        def cutter(j):
+            q0, al = r["q0"][j], r["alpha"][j]
+            return pv.Cylinder(center=q0 + al * h * 0.5, direction=al,
+                               radius=R, height=h, resolution=40)
+
+        # fading ghost trail (swept volume); spaced back along the path
+        trail = getattr(self, "_trail", True)
+        step = max(1, nu // 40)
+        for g in range(self._TRAIL_N):
+            name = f"ghost_{g}"
+            j = i - (g + 1) * step
+            if trail and j >= 0:
+                op = 0.22 * (1.0 - g / self._TRAIL_N)
+                self.plotter.add_mesh(cutter(j), color="#d4af37",
+                                      opacity=max(0.04, op), name=name)
+            else:
+                try:
+                    self.plotter.remove_actor(name)
+                except Exception:
+                    pass
+
+        self.plotter.add_mesh(cutter(i), color="#d4af37", opacity=0.6, name="tool")
+        self.plotter.add_mesh(pv.Sphere(radius=R*0.18, center=r["contact"][i]),
                               color="red", name="contact")
         self.plotter.render()
+
+    def _toggle_trail(self, on):
+        self._trail = bool(on)
+        if self.last:
+            self._show_tool_at(self.anim_slider.value())
 
     def _toggle_play(self):
         if self._anim_timer.isActive():

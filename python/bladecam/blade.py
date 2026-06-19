@@ -32,8 +32,11 @@ def rail_tangents(a: np.ndarray, b: np.ndarray):
     """Numerical rail tangents a'(u), b'(u) over uniform u (np.gradient)."""
     nu = a.shape[0]
     u = np.linspace(0.0, 1.0, nu)
-    ap = np.gradient(a, u, axis=0)
-    bp = np.gradient(b, u, axis=0)
+    # edge_order=2: second-order one-sided differences at the blade tips, so the
+    # rail tangents there are as accurate as the interior (first-order ends are
+    # ~150x worse and degrade the two-point positioning/seed at the tips).
+    ap = np.gradient(a, u, axis=0, edge_order=2)
+    bp = np.gradient(b, u, axis=0, edge_order=2)
     return ap, bp
 
 

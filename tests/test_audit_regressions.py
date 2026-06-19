@@ -102,12 +102,31 @@ def test_bug5_chatter_chart_xlim_bounded():
     check(xmax < rpm.max(), "x-limit not blown out by the rpm asymptote")
 
 
+def test_two_point_degenerate_normal():
+    """two_point must offset the cylinder by R even when a rail tangent is
+    parallel to the ruling (cross product -> 0). Before the guard, q0 collapsed
+    onto the contact point so the cylinder passed THROUGH the surface (gouge -R)."""
+    # ruling along +y; a' parallel to the ruling -> degenerate normal at a
+    a_pt = np.array([0., 0, 0]); b_pt = np.array([0., 10, 0])
+    ap = np.array([0., 3, 0]); bp = np.array([1., 0, 0]); R = 6.0
+    q0, al = core.two_point(a_pt, ap, b_pt, bp, R)
+    g = core.deviation(q0, al, R, np.array([a_pt]))
+    check(abs(g[0]) < 1e-9, "two_point offsets R despite a'||ruling (no gouge)")
+    check(abs(np.linalg.norm(al) - 1.0) < 1e-9, "two_point axis stays unit")
+    # both rail tangents parallel to the ruling -> fall back to a perp normal
+    q0b, alb = core.two_point(a_pt, np.array([0., 3, 0]), b_pt,
+                              np.array([0., 2, 0]), R)
+    check(abs(np.linalg.norm(q0b - a_pt) - R) < 1e-9,
+          "two_point offsets R when both tangents degenerate")
+
+
 def main():
     for fn in (test_bug1_devfield_uses_cone,
                test_bug1_cone_equals_cylinder_at_zero,
                test_bug2_chatter_highspeed_lobe,
                test_bug4_compare_full_carries_dev,
-               test_bug5_chatter_chart_xlim_bounded):
+               test_bug5_chatter_chart_xlim_bounded,
+               test_two_point_degenerate_normal):
         print(fn.__name__)
         fn()
     if FAILED:
