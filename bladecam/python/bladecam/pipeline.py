@@ -11,7 +11,7 @@ import numpy as np
 
 from . import core, blade, optimize
 from .process import MachineLimits, ProcessParams
-from .machine import reachability
+from .machine import reachability, structure_obstacles
 
 
 @dataclass
@@ -39,6 +39,7 @@ class Params:
     swept_window: int = 8       # neighbour index half-width for swept penalty
     collision_substeps: int = 2  # swept-motion sampling between stations
     fixture_z: float = None      # fixture/table plane z (None = no plane check)
+    mount_clearance: float = 30.0  # blade base -> machine table top (mm)
     rails: tuple = None         # optional (a, b) override for external blades
     # machine + process
     machine: MachineLimits = field(default_factory=MachineLimits)
@@ -232,6 +233,14 @@ def compute(p: Params) -> dict:
     flat = surf.reshape(-1, 3)
     pitch = 2.0 * np.pi / p.n_blades
     obstacles = np.vstack([flat @ _rotz(pitch).T, flat @ _rotz(-pitch).T])
+    # structural machine model: add the trunnion TABLE as a static obstacle (in
+    # part frame it moves with the part). Its top sits mount_clearance below the
+    # blade base, so the assembly must clear it -- caught at steep tilt/deep reach.
+    structural = hasattr(p.machine, "table_radius")
+    if structural:
+        mount_z = float(min(a[:, 2].min(), b[:, 2].min())) - p.mount_clearance
+        obstacles = np.vstack([obstacles,
+                               structure_obstacles(p.machine, mount_z)])
     # stacked assembly segments (axial extents from q0 along the tool axis)
     hbase = pr.flute_len + pr.holder_gap
     sbase = hbase + pr.holder_len + pr.spindle_gap
@@ -291,7 +300,7 @@ def compute(p: Params) -> dict:
         min_clearance=min_clear, collision_free=collision_free,
         holder_clearance=holder_min, assembly_clearance=float(clr.min()),
         reachable=reachable, axis_violations=axis_violations,
-        machine_name=machine_name,
+        machine_name=machine_name, structural_check=structural,
         cut_force_peak_N=forces["F_peak"], cut_force_mean_N=forces["F_mean"],
         cut_power_W=forces["power_W"], cut_torque_Nm=forces["torque_Nm"],
         feed_feasible=feed_feasible,
