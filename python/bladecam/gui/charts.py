@@ -54,6 +54,35 @@ def machinability_chart(delta, dev, fig=None):
     return fig
 
 
+def compare_chart(stats: dict, fig=None):
+    """Grouped bars comparing strategies on deviation / jerk / cycle.
+
+    Each metric is normalised to its max across strategies so the three
+    (different-unit) metrics share an axis; lower is better for all.
+    """
+    fig = fig or plt.figure(figsize=(5, 3))
+    ax = fig.add_subplot(111)
+    names = list(stats.keys())
+    metrics = [("dev_um", "peak dev"), ("jerk", "jerk"), ("cycle_s", "cycle")]
+    x = np.arange(len(metrics))
+    w = 0.8 / max(1, len(names))
+    for i, name in enumerate(names):
+        vals = []
+        for key, _ in metrics:
+            col = [stats[n][key] for n in names]
+            mx = max(col) or 1.0
+            vals.append(stats[name][key] / mx)
+        ax.bar(x + i*w, vals, w, label=name, color=_COLORS.get(name))
+    ax.set_xticks(x + 0.4 - w/2)
+    ax.set_xticklabels([m[1] for m in metrics])
+    ax.set_ylabel("normalised (lower = better)")
+    ax.set_title("Strategy comparison")
+    ax.legend(fontsize=8, ncol=2)
+    ax.grid(True, axis="y", alpha=0.3)
+    fig.tight_layout()
+    return fig
+
+
 def feed_chart(seglen, aprof, fig=None):
     """Time-optimal tool-tip feed (mm/min) along the toolpath."""
     fig = fig or plt.figure(figsize=(5, 3))
