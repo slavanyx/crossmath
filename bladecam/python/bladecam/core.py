@@ -65,6 +65,8 @@ _lib.bc_holder_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
                                      c_int, _DBL, c_int, _DBL]
 _lib.bc_swept_deviation.argtypes = [_DBL, _DBL, _DBL, c_double, c_int,
                                     _DBL, c_int, _DBL]
+_lib.bc_swept_surface.argtypes = [_DBL, _DBL, _DBL, c_double, c_int,
+                                  _DBL, c_int, _DBL]
 _lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
@@ -261,6 +263,19 @@ def swept_deviation(q0, alpha, Lflute, R: float, pts: np.ndarray) -> np.ndarray:
     _lib.bc_swept_deviation(_ptr(q0), _ptr(alpha), _ptr(Lflute), c_double(R),
                             c_int(nu), _ptr(pts), c_int(npts), _ptr(g))
     return g
+
+
+def swept_surface(q0, alpha, Lflute, R: float, pts: np.ndarray) -> np.ndarray:
+    """True swept-envelope surface: the machined point for each design point in
+    pts(npts,3), projected radially onto the nearest finite-flute cutter over the
+    whole path (the boundary of the swept tool volume). q0,alpha are (nu,3);
+    Lflute is (nu,). Returns mpts(npts,3) -- the actual machined geometry."""
+    q0 = _c(q0); alpha = _c(alpha); Lflute = _c(Lflute); pts = _c(pts)
+    nu = q0.shape[0]; npts = pts.shape[0]
+    mpts = np.empty((npts, 3), dtype=np.float64)
+    _lib.bc_swept_surface(_ptr(q0), _ptr(alpha), _ptr(Lflute), c_double(R),
+                          c_int(nu), _ptr(pts), c_int(npts), _ptr(mpts))
+    return mpts
 
 
 def ik_path(Q: np.ndarray, O: np.ndarray, pivot, kind: int = 0) -> np.ndarray:

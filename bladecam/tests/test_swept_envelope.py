@@ -71,6 +71,19 @@ def main():
     check(abs(oc - r["swept_overcut"]) < 1e-9,
           "swept_field overcut depth == swept_overcut scalar")
 
+    # true swept-envelope SURFACE: machined points displaced from the design by
+    # exactly |swept deviation|, and lying on a cutter surface.
+    env = r["envelope_surf"]
+    check(env.shape == r["surf"].shape, "envelope surface matches design grid")
+    check(np.all(np.isfinite(env)), "envelope surface is finite")
+    design = r["surf"].reshape(-1, 3)
+    g = core.swept_deviation(r["q0"], r["alpha"],
+                             np.linalg.norm(r["b"] - r["a"], axis=1), 6.0, design)
+    disp = np.linalg.norm(env.reshape(-1, 3) - design, axis=1)
+    check(np.allclose(disp, np.abs(g), atol=1e-6),
+          "machined displacement == |swept deviation|",
+          f"(max diff {np.abs(disp - np.abs(g)).max():.2e})")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)
