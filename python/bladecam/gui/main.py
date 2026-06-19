@@ -69,6 +69,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(filem, "Export blade STL…", self.export_stl)
         self._act(filem, "Export rails CSV…", self.export_rails)
         self._act(filem, "Save G-code…", self.save_gcode)
+        self._act(filem, "Save Heidenhain klartext (.h)…", self.save_heidenhain)
         filem.addSeparator()
         self._act(filem, "Quit", self.close, "Ctrl+Q")
         # --- Operations: every milling operation as a first-class action ---
@@ -715,6 +716,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 fh.write(postproc.to_gcode(self.last["machine_path"],
                                            self.last["feed_cap_mm_min"],
                                            move_times=self.last.get("move_times_s")))
+
+    def save_heidenhain(self):
+        if not self.last:
+            return
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save Heidenhain klartext", "bladecam.h", "Heidenhain (*.h)")
+        if fn:
+            with open(fn, "w") as fh:
+                fh.write(postproc.to_heidenhain(
+                    self.last["contact"], self.last["alpha"],
+                    self.last["feed_cap_mm_min"],
+                    move_times=self.last.get("move_times_s")))
 
     def about(self):
         QtWidgets.QMessageBox.about(
