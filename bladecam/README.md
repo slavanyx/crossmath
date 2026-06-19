@@ -39,12 +39,16 @@ ctest --test-dir build --output-on-failure
 
 Produces `build/core/libbladecam.{so,dylib}` (or `bladecam.dll` on Windows).
 
-`ctest` runs four suites: `core` (Fortran unit tests), `python` (pipeline +
+`ctest` runs six suites: `core` (Fortran unit tests), `python` (pipeline +
 GUI-model smoke), `audit_regressions` (one named test per bug found in the
-adversarial audit), and `warnings` (compiles the core with
-`-Werror=do-subscript,unused-variable` to catch dead-code / out-of-bounds
-regressions). Each regression test was mutation-verified: reintroducing the
-bug makes its test fail.
+adversarial audit, each mutation-verified), `validation` (physics checks:
+developable surface mills to ~0, optimization monotonic, global beats the naive
+twist-error bound), `cad_step` (STEP/IGES round-trip, skips without OCC), and
+`warnings` (compiles the core with `-Werror=do-subscript,unused-variable`).
+CI runs them on every push (`.github/workflows/bladecam.yml`).
+
+Benchmark: `cd python && PYTHONPATH=. python benchmark.py` (accuracy/time vs
+cutter radius and blade twist).
 
 ## Run
 
@@ -124,9 +128,19 @@ matplotlib):
   `a_lim` vs spindle speed from tool-tip modal parameters; new GUI "Chatter"
   analysis tab. More damping raises the stable depth (verified).
 
+**Phase 7 (CI, validation, real CAD)**
+- **CI**: GitHub Actions builds the core and runs all six `ctest` suites on
+  every push (`.github/workflows/bladecam.yml`).
+- **Validation + benchmark**: exact developable case, optimization
+  monotonicity, and a documented accuracy/time benchmark showing the global
+  optimum ~100-400x below the naive twist-error bound.
+- **STEP / IGES import** (`cadio.read_step`/`read_iges`/`read_cad`, via
+  OpenCASCADE): real CAD blades load as tessellated meshes for display,
+  collision and STL export. Install with `pip install -e ".[cad]"`.
+
 ## Roadmap
 
-- STEP/IGES import via OpenCASCADE (pythonocc).
+- Extract ruled hub/shroud rails automatically from imported STEP B-rep faces.
 - Stability lobes from a *measured* tool-tip FRF (replace the modal model).
 - Double-flank milling of thin blades (one tool, both sides).
 

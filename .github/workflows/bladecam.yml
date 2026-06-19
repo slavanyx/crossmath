@@ -1,0 +1,42 @@
+name: bladecam
+
+on:
+  push:
+    paths:
+      - 'bladecam/**'
+      - '.github/workflows/bladecam.yml'
+  pull_request:
+    paths:
+      - 'bladecam/**'
+      - '.github/workflows/bladecam.yml'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bladecam
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran cmake
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python deps (headless test deps only)
+        run: python -m pip install numpy matplotlib
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test (core, python, audit_regressions, warnings)
+        run: ctest --test-dir build --output-on-failure

@@ -54,7 +54,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mb = self.menuBar()
         filem = mb.addMenu("&File")
         self._act(filem, "Import rails CSV…", self.import_rails)
-        self._act(filem, "Import STL…", self.import_stl)
+        self._act(filem, "Import CAD (STL/STEP/IGES)…", self.import_cad)
         filem.addSeparator()
         self._act(filem, "Export blade STL…", self.export_stl)
         self._act(filem, "Save G-code…", self.save_gcode)
@@ -276,14 +276,21 @@ class MainWindow(QtWidgets.QMainWindow):
             self.model.rails = cadio.read_rails_csv(fn)
             self.recompute(compare=True)
 
-    def import_stl(self):
+    def import_cad(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Import STL", "", "STL (*.stl)")
-        if fn and self.last is not None:
-            v, f = cadio.read_stl(fn)
-            faces = np.hstack([np.full((len(f), 1), 3), f]).ravel()
-            self.plotter.add_mesh(pv.PolyData(v, faces), color="lightgray",
-                                  opacity=0.4)
+            self, "Import CAD", "",
+            "CAD (*.stl *.step *.stp *.iges *.igs)")
+        if not fn:
+            return
+        try:
+            v, f = cadio.read_cad(fn)
+        except Exception as e:        # OCP missing or bad file
+            self.status.showMessage(f"CAD import failed: {e}")
+            return
+        faces = np.hstack([np.full((len(f), 1), 3), f]).ravel()
+        self.plotter.add_mesh(pv.PolyData(v, faces), color="lightgray",
+                              opacity=0.4, name="imported_cad")
+        self.plotter.render()
 
     def export_stl(self):
         if not self.last:
