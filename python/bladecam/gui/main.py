@@ -199,16 +199,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_chart("Compare", charts.compare_chart, stats)
 
     # ---- drawing ------------------------------------------------------------
+    def _dev_surface(self, surf, dev_um, **mesh_kw):
+        """Add a structured surface coloured by deviation (µm). `dev_um` may be a
+        per-point field or a per-station array (broadcast across v)."""
+        nu, nv, _ = surf.shape
+        g = pv.StructuredGrid()
+        g.points = surf.reshape(-1, 3)
+        g.dimensions = (nv, nu, 1)
+        d = np.asarray(dev_um)
+        g["dev_um"] = (np.repeat(d, nv) if d.size == nu else d.reshape(-1))
+        self.plotter.add_mesh(g, scalars="dev_um", cmap="coolwarm", **mesh_kw)
+        return g
+
     def _draw_3d(self, r):
         surf = r["surf"]; nu, nv, _ = surf.shape
-        grid = pv.StructuredGrid()
-        grid.points = surf.reshape(-1, 3)
-        grid.dimensions = (nv, nu, 1)
-        grid["dev_um"] = r["devfield"].reshape(-1) * 1000.0
         cam = self.plotter.camera_position
         self.plotter.clear()
-        self.plotter.add_mesh(grid, scalars="dev_um", cmap="coolwarm",
-                              scalar_bar_args={"title": "dev (µm)"})
+        self._dev_surface(surf, r["devfield"] * 1000.0,
+                          scalar_bar_args={"title": "dev (µm)"})
         self.plotter.add_mesh(pv.lines_from_points(r["strict"]),
                               color="lime", line_width=3)
         q0, al = r["q0"], r["alpha"]
@@ -377,12 +385,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plotter.clear()
         for surf, dev, nm in ((r["surfL"], r["devL"], "L"),
                               (r["surfR"], r["devR"], "R")):
-            nu, nv, _ = surf.shape
-            g = pv.StructuredGrid()
-            g.points = surf.reshape(-1, 3); g.dimensions = (nv, nu, 1)
-            g["dev_um"] = np.repeat(dev, nv) * 1000.0
-            self.plotter.add_mesh(g, scalars="dev_um", cmap="coolwarm",
-                                  name=f"wall_{nm}")
+            self._dev_surface(surf, dev * 1000.0, name=f"wall_{nm}")
         q0, al = r["q0"], r["alpha"]
         for i in range(0, q0.shape[0], max(1, q0.shape[0] // 12)):
             cyl = pv.Cylinder(center=q0[i] + al[i]*15, direction=al[i],
