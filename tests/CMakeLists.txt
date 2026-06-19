@@ -135,6 +135,12 @@ if(PYTHON3)
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_dexel.py)
   set_tests_properties(dexel PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
+  # Property-based pipeline fuzz (finite outputs for any params/strategy)
+  add_test(NAME pipeline_fuzz
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_pipeline_fuzz.py)
+  set_tests_properties(pipeline_fuzz PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 endif()
 
 # Compiler-warnings gate: catches the dead-code / out-of-bounds-subscript class
