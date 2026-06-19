@@ -21,9 +21,9 @@ contains
     integer,  intent(in)  :: ndof, n
     real(dp), intent(in)  :: q(ndof, n), vmax(ndof), amax(ndof), a0, aN
     real(dp), intent(out) :: aprof(n), ttotal
-    real(dp) :: qp(ndof, n), qpp(ndof, n), abar(n), af(n), ab(n)
-    real(dp) :: ds, sdd_lo, sdd_hi, denom
-    integer  :: k, i
+    real(dp) :: qp(ndof, n), qpp(ndof, n), abar(n)
+    real(dp) :: ds, sdd_lo, sdd_hi, denom, anew, amaxchg
+    integer  :: k, i, it
 
     ds = 1.0_dp / real(n - 1, dp)
 
@@ -41,7 +41,19 @@ contains
       end if
     end do
 
-    ! velocity-limit curve
+    ! velocity-limit curve (a.k.a. maximum-velocity curve / MVC).
+    ! Two coupled limits bound the squared path speed a = sdot^2:
+    !   (1) kinematic: a <= (vmax_i/|q'_i|)^2 per axis.
+    !   (2) dynamic feasibility: there must exist a path acceleration sdd with
+    !       |q''_i a + q'_i sdd| <= amax_i for EVERY axis at once. Near a cusp an
+    !       axis reverses (q'_i -> 0) so its q'_i*sdd term vanishes and feasibility
+    !       collapses to |q''_i| a <= amax_i -- a hard cap on a that no sdd can
+    !       rescue. The previous code applied only (1) and let sdd_bounds ignore
+    !       near-zero-q' axes, so the curvature acceleration at (near-)cusps went
+    !       unbounded and the posted feed exceeded the machine accel limit.
+    ! We enforce (2) directly: cap a at each station to the largest value for
+    ! which the sdd interval is non-empty (threshold-free; handles exact and
+    ! near cusps uniformly).
     do k = 1, n
       abar(k) = huge(1.0_dp)
       do i = 1, ndof
@@ -49,26 +61,38 @@ contains
           abar(k) = min(abar(k), (vmax(i) / abs(qp(i, k)))**2)
         end if
       end do
+      abar(k) = accel_capped_a(qp(:, k), qpp(:, k), amax, ndof, abar(k))
     end do
 
-    ! forward pass: maximum acceleration
-    af(1) = min(a0, abar(1))
-    do k = 1, n - 1
-      call sdd_bounds(qp(:, k), qpp(:, k), amax, ndof, af(k), sdd_lo, sdd_hi)
-      af(k+1) = min(abar(k+1), af(k) + 2.0_dp*ds*sdd_hi)
-      if (af(k+1) < 0.0_dp) af(k+1) = 0.0_dp
-    end do
-
-    ! backward pass: maximum deceleration (evaluate bounds at k+1, semi-implicit)
-    ab(n) = min(aN, abar(n))
-    do k = n - 1, 1, -1
-      call sdd_bounds(qp(:, k+1), qpp(:, k+1), amax, ndof, ab(k+1), sdd_lo, sdd_hi)
-      ab(k) = min(abar(k), ab(k+1) - 2.0_dp*ds*sdd_lo)
-    end do
-
-    ! feasible profile = min of the two passes and the velocity cap
-    do k = 1, n
-      aprof(k) = max(0.0_dp, min(af(k), ab(k), abar(k)))
+    ! Feasible profile by ITERATED forward/backward clamping. A single forward
+    ! and single backward pass (the classic scheme) leaves the profile slope
+    ! infeasible near velocity cusps, because min(forward,backward,MVC) can
+    ! create a segment steeper than the per-station acceleration interval allows.
+    ! Each clamp only LOWERS aprof, so iterating to a fixed point is monotone,
+    ! bounded below by 0, hence convergent -- and the limit satisfies both the
+    ! acceleration (rising) and deceleration (falling) slope bounds everywhere.
+    aprof = abar
+    aprof(1) = min(aprof(1), a0)
+    aprof(n) = min(aprof(n), aN)
+    do it = 1, 200
+      amaxchg = 0.0_dp
+      ! forward: cap each rise to the max feasible acceleration at station k
+      do k = 1, n - 1
+        call sdd_bounds(qp(:, k), qpp(:, k), amax, ndof, aprof(k), sdd_lo, sdd_hi)
+        anew = min(aprof(k+1), aprof(k) + 2.0_dp*ds*sdd_hi)
+        if (anew < 0.0_dp) anew = 0.0_dp
+        amaxchg = max(amaxchg, aprof(k+1) - anew)
+        aprof(k+1) = anew
+      end do
+      ! backward: cap each (reverse) rise to the max feasible deceleration
+      do k = n - 1, 1, -1
+        call sdd_bounds(qp(:, k+1), qpp(:, k+1), amax, ndof, aprof(k+1), sdd_lo, sdd_hi)
+        anew = min(aprof(k), aprof(k+1) - 2.0_dp*ds*sdd_lo)
+        if (anew < 0.0_dp) anew = 0.0_dp
+        amaxchg = max(amaxchg, aprof(k) - anew)
+        aprof(k) = anew
+      end do
+      if (amaxchg <= 1.0e-15_dp) exit
     end do
 
     ! integrate time: dt = ds / sdot, trapezoid on 1/sqrt(a)
@@ -78,6 +102,55 @@ contains
       if (denom > 1.0e-12_dp) ttotal = ttotal + 2.0_dp*ds / denom
     end do
   end subroutine topp_ra
+
+  !> Is there a path acceleration sdd with |q''_i a + q'_i sdd| <= amax_i for
+  !> every axis i, at squared path speed a? (dynamic feasibility of the MVC).
+  pure function accel_feasible(qp, qpp, amax, ndof, a) result(ok)
+    integer,  intent(in) :: ndof
+    real(dp), intent(in) :: qp(ndof), qpp(ndof), amax(ndof), a
+    logical :: ok
+    integer :: i
+    real(dp) :: sdd_lo, sdd_hi, t1, t2
+    ok = .true.
+    sdd_lo = -huge(1.0_dp); sdd_hi = huge(1.0_dp)
+    do i = 1, ndof
+      if (abs(qp(i)) > 1.0e-12_dp) then
+        t1 = (-amax(i) - qpp(i)*a) / qp(i)
+        t2 = ( amax(i) - qpp(i)*a) / qp(i)
+        sdd_lo = max(sdd_lo, min(t1, t2))
+        sdd_hi = min(sdd_hi, max(t1, t2))
+      else if (abs(qpp(i))*a > amax(i)) then
+        ok = .false.; return            ! q'~0: |q''| a must not exceed amax
+      end if
+    end do
+    if (sdd_hi < sdd_lo) ok = .false.
+  end function accel_feasible
+
+  !> Largest squared path speed <= a_hi that is dynamically feasible. Bisects on
+  !> the (monotone) feasibility predicate; if a_hi is unbounded it is first
+  !> seeded from the per-axis curvature caps amax_i/|q''_i|.
+  pure function accel_capped_a(qp, qpp, amax, ndof, a_hi) result(a)
+    integer,  intent(in) :: ndof
+    real(dp), intent(in) :: qp(ndof), qpp(ndof), amax(ndof), a_hi
+    real(dp) :: a, hi, lo, mid, seed
+    integer  :: i, it
+    hi = a_hi
+    if (hi >= huge(1.0_dp)) then         ! no velocity cap (e.g. exact cusp)
+      seed = 0.0_dp
+      do i = 1, ndof
+        if (abs(qpp(i)) > 1.0e-12_dp) seed = max(seed, amax(i)/abs(qpp(i)))
+      end do
+      if (seed <= 0.0_dp) then; a = a_hi; return; end if   ! straight, no curvature
+      hi = seed
+    end if
+    if (accel_feasible(qp, qpp, amax, ndof, hi)) then; a = hi; return; end if
+    lo = 0.0_dp
+    do it = 1, 40
+      mid = 0.5_dp*(lo + hi)
+      if (accel_feasible(qp, qpp, amax, ndof, mid)) then; lo = mid; else; hi = mid; end if
+    end do
+    a = lo
+  end function accel_capped_a
 
   !> Feasible second-derivative (sdd) interval at a station given speed^2 = a.
   subroutine sdd_bounds(qp, qpp, amax, ndof, a, sdd_lo, sdd_hi)
