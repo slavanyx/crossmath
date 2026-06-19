@@ -149,7 +149,8 @@ def compute(p: Params) -> dict:
 
     res = optimize.optimize_blade(a, b, ap, bp, p.R, nv=p.nv,
                                   smooth_window=p.smooth_window,
-                                  mu=p.mu, gamma=p.gamma, nsweeps=p.nsweeps)
+                                  mu=p.mu, gamma=p.gamma, nsweeps=p.nsweeps,
+                                  strategy=p.strategy)
     sel = res[p.strategy]
     q0 = sel["q0"]; alpha = sel["alpha"]; dev = sel["dev"]
 

@@ -20,56 +20,66 @@ def _ruling_dev(a_i, b_i, q0, alpha, R, nv):
     return np.max(np.abs(core.deviation(q0, alpha, R, pts)))
 
 
-def optimize_blade(a, b, ap, bp, R, nv=41, smooth_window=5, tol_mm=None,
-                   mu=1.0, gamma=0.0, nsweeps=4):
-    """Return a dict of per-ruling results for two-point, min-max,
-    tolerance-constrained smoothed, and globally-optimized strategies, with
-    peak deviation arrays.
+STRATEGIES = ("two_point", "minmax", "smoothed", "global")
 
-    The smoothing budget `tol_mm` defaults to the min-max peak deviation, so
-    smoothing is guaranteed never to make the worst ruling worse -- it only
-    spends accuracy slack to reduce orientation jerk (rotary-axis effort).
-    The `global` strategy jointly optimizes accuracy and smoothness (mu,
-    nsweeps) in the Fortran core.
-    """
+
+def _two_point_field(a, b, ap, bp, R, nv):
     nu = a.shape[0]
-    q0_tp = np.empty((nu, 3)); al_tp = np.empty((nu, 3)); e_tp = np.empty(nu)
-    q0_mm = np.empty((nu, 3)); al_mm = np.empty((nu, 3)); e_mm = np.empty(nu)
-
+    q0 = np.empty((nu, 3)); al = np.empty((nu, 3)); e = np.empty(nu)
     for i in range(nu):
-        q0, al = core.two_point(a[i], ap[i], b[i], bp[i], R)
-        q0_tp[i] = q0; al_tp[i] = al
-        e_tp[i] = _ruling_dev(a[i], b[i], q0, al, R, nv)
+        q0[i], al[i] = core.two_point(a[i], ap[i], b[i], bp[i], R)
+        e[i] = _ruling_dev(a[i], b[i], q0[i], al[i], R, nv)
+    return dict(q0=q0, alpha=al, dev=e)
 
-        q0r, alr, em = core.refine_minmax(a[i], ap[i], b[i], bp[i], R, nv)
-        q0_mm[i] = q0r; al_mm[i] = alr; e_mm[i] = em
 
-    # --- tolerance-constrained global smoothing of the min-max axis field ---
-    tol = float(e_mm.max()) if tol_mm is None else tol_mm
+def _minmax_field(a, b, ap, bp, R, nv):
+    nu = a.shape[0]
+    q0 = np.empty((nu, 3)); al = np.empty((nu, 3)); e = np.empty(nu)
+    for i in range(nu):
+        q0[i], al[i], e[i] = core.refine_minmax(a[i], ap[i], b[i], bp[i], R, nv)
+    return dict(q0=q0, alpha=al, dev=e)
+
+
+def _smoothed_field(a, b, R, nv, mm, smooth_window, tol_mm):
+    nu = a.shape[0]
+    q0_mm, al_mm = mm["q0"], mm["alpha"]
+    tol = float(mm["dev"].max()) if tol_mm is None else tol_mm
     al_tgt = _smooth(al_mm, smooth_window)
     al_tgt /= np.linalg.norm(al_tgt, axis=1, keepdims=True)
     q0_tgt = _smooth(q0_mm, smooth_window)
-
-    al_sm = al_mm.copy(); q0_sm = q0_mm.copy(); e_sm = e_mm.copy()
+    q0 = q0_mm.copy(); al = al_mm.copy(); e = mm["dev"].copy()
     for i in range(nu):
         t = _max_blend(a[i], b[i], R, nv, tol,
                        q0_mm[i], al_mm[i], q0_tgt[i], al_tgt[i])
-        al = al_mm[i] + t * (al_tgt[i] - al_mm[i])
-        al /= np.linalg.norm(al)
-        q0 = q0_mm[i] + t * (q0_tgt[i] - q0_mm[i])
-        al_sm[i] = al; q0_sm[i] = q0
-        e_sm[i] = _ruling_dev(a[i], b[i], q0, al, R, nv)
+        ai = al_mm[i] + t * (al_tgt[i] - al_mm[i]); ai /= np.linalg.norm(ai)
+        q0[i] = q0_mm[i] + t * (q0_tgt[i] - q0_mm[i]); al[i] = ai
+        e[i] = _ruling_dev(a[i], b[i], q0[i], ai, R, nv)
+    return dict(q0=q0, alpha=al, dev=e)
 
-    # --- global joint accuracy+smoothness optimization (Fortran core) ---
-    q0_gl, al_gl, e_gl = core.optimize_global(a, b, ap, bp, R, nv=nv,
-                                              mu=mu, gamma=gamma, nsweeps=nsweeps)
 
-    return {
-        "two_point": dict(q0=q0_tp, alpha=al_tp, dev=e_tp),
-        "minmax":    dict(q0=q0_mm, alpha=al_mm, dev=e_mm),
-        "smoothed":  dict(q0=q0_sm, alpha=al_sm, dev=e_sm),
-        "global":    dict(q0=q0_gl, alpha=al_gl, dev=e_gl),
-    }
+def optimize_blade(a, b, ap, bp, R, nv=41, smooth_window=5, tol_mm=None,
+                   mu=1.0, gamma=0.0, nsweeps=4, strategy="global"):
+    """Return {strategy: dict(q0, alpha, dev)} for ONE strategy (default
+    'global') or, with strategy='all', every strategy.
+
+    Only the work needed for the requested strategy runs -- 'smoothed' first
+    computes the min-max field it refines; the others are independent.
+    """
+    want = STRATEGIES if strategy == "all" else (strategy,)
+    out = {}
+    if "two_point" in want:
+        out["two_point"] = _two_point_field(a, b, ap, bp, R, nv)
+    if "minmax" in want or "smoothed" in want:
+        mm = _minmax_field(a, b, ap, bp, R, nv)
+        if "minmax" in want:
+            out["minmax"] = mm
+        if "smoothed" in want:
+            out["smoothed"] = _smoothed_field(a, b, R, nv, mm, smooth_window, tol_mm)
+    if "global" in want:
+        q0, al, e = core.optimize_global(a, b, ap, bp, R, nv=nv,
+                                         mu=mu, gamma=gamma, nsweeps=nsweeps)
+        out["global"] = dict(q0=q0, alpha=al, dev=e)
+    return out
 
 
 def orientation_jerk(alpha):
