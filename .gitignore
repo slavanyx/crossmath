@@ -8,4 +8,7 @@ __pycache__/
 *.pyc
 bladecam_result.csv
 bladecam.nc
+blade.stl
+blade_rails.csv
 *.png
+*.egg-info/

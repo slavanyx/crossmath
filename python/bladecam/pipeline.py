@@ -27,8 +27,11 @@ class Params:
     # tool / strategy
     R: float = 6.0
     nv: int = 41
-    strategy: str = "minmax"    # two_point | minmax | smoothed
+    strategy: str = "minmax"    # two_point | minmax | smoothed | global
     smooth_window: int = 5
+    mu: float = 30.0            # global-optimizer smoothness weight
+    nsweeps: int = 4
+    rails: tuple = None         # optional (a, b) override for external blades
     # machine + process
     machine: MachineLimits = field(default_factory=MachineLimits)
     process: ProcessParams = field(default_factory=ProcessParams)
@@ -47,15 +50,19 @@ def _seg_distance(points, p0, p1):
 
 
 def compute(p: Params) -> dict:
-    a, b = blade.make_blade(p.nu, p.r_hub, p.r_shroud, p.z_span,
-                            p.z_offset, p.wrap, p.twist)
+    if p.rails is not None:
+        a, b = np.ascontiguousarray(p.rails[0]), np.ascontiguousarray(p.rails[1])
+    else:
+        a, b = blade.make_blade(p.nu, p.r_hub, p.r_shroud, p.z_span,
+                                p.z_offset, p.wrap, p.twist)
     ap, bp = blade.rail_tangents(a, b)
     nu = a.shape[0]
 
     delta, vstar, strict = core.distribution(a, b)
 
     res = optimize.optimize_blade(a, b, ap, bp, p.R, nv=p.nv,
-                                  smooth_window=p.smooth_window)
+                                  smooth_window=p.smooth_window,
+                                  mu=p.mu, nsweeps=p.nsweeps)
     sel = res[p.strategy]
     q0 = sel["q0"]; alpha = sel["alpha"]; dev = sel["dev"]
 

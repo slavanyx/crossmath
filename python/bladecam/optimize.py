@@ -20,13 +20,17 @@ def _ruling_dev(a_i, b_i, q0, alpha, R, nv):
     return np.max(np.abs(core.deviation(q0, alpha, R, pts)))
 
 
-def optimize_blade(a, b, ap, bp, R, nv=41, smooth_window=5, tol_mm=None):
-    """Return a dict of per-ruling results for two-point, min-max, and
-    tolerance-constrained smoothed strategies, with peak deviation arrays.
+def optimize_blade(a, b, ap, bp, R, nv=41, smooth_window=5, tol_mm=None,
+                   mu=30.0, nsweeps=4):
+    """Return a dict of per-ruling results for two-point, min-max,
+    tolerance-constrained smoothed, and globally-optimized strategies, with
+    peak deviation arrays.
 
     The smoothing budget `tol_mm` defaults to the min-max peak deviation, so
     smoothing is guaranteed never to make the worst ruling worse -- it only
     spends accuracy slack to reduce orientation jerk (rotary-axis effort).
+    The `global` strategy jointly optimizes accuracy and smoothness (mu,
+    nsweeps) in the Fortran core.
     """
     nu = a.shape[0]
     q0_tp = np.empty((nu, 3)); al_tp = np.empty((nu, 3)); e_tp = np.empty(nu)
@@ -56,10 +60,15 @@ def optimize_blade(a, b, ap, bp, R, nv=41, smooth_window=5, tol_mm=None):
         al_sm[i] = al; q0_sm[i] = q0
         e_sm[i] = _ruling_dev(a[i], b[i], q0, al, R, nv)
 
+    # --- global joint accuracy+smoothness optimization (Fortran core) ---
+    q0_gl, al_gl, e_gl = core.optimize_global(a, b, ap, bp, R, nv=nv,
+                                              mu=mu, nsweeps=nsweeps)
+
     return {
         "two_point": dict(q0=q0_tp, alpha=al_tp, dev=e_tp),
         "minmax":    dict(q0=q0_mm, alpha=al_mm, dev=e_mm),
         "smoothed":  dict(q0=q0_sm, alpha=al_sm, dev=e_sm),
+        "global":    dict(q0=q0_gl, alpha=al_gl, dev=e_gl),
     }
 
 
