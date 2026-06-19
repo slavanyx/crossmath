@@ -48,6 +48,13 @@ def main():
     check(len(scenes) == len(workflow.STAGE_KEYS),
           "all_scenes covers every stage")
 
+    # every stage maps to a real analysis-tab name (these drive the GUI tabs)
+    valid_tabs = {"Deviation", "Machinability", "Feed", "Compare", "Chatter"}
+    check(set(workflow.STAGE_CHART) == set(workflow.STAGE_KEYS),
+          "STAGE_CHART covers exactly the stages")
+    check(all(v in valid_tabs for v in workflow.STAGE_CHART.values()),
+          "STAGE_CHART points at real analysis tabs")
+
     for sc in scenes:
         ok = bool(sc["title"]) and bool(sc["blurb"]) and len(sc["meshes"]) >= 1
         check(ok, f"stage '{sc['key']}' has title/blurb/meshes")

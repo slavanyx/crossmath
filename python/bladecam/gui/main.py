@@ -79,6 +79,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(opm, "Channel roughing — trochoidal", self.show_trochoidal)
         self._act(opm, "Edge finishing (point-mill)", self.show_edge_finish)
         opm.addSeparator()
+        self._act(opm, "Minimize swept overcut", self.minimize_swept_overcut)
         self._act(opm, "Process plan (full report)", self.show_process_plan)
         self.viewm = mb.addMenu("&View")    # dock toggles added later
         helpm = mb.addMenu("&Help")
@@ -285,6 +286,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage_lbl.setText(f"  {scene['title']}  ")
         self._render_scene(scene)
         self._fill_stage_metrics(scene)
+        # bring the analysis tab most relevant to this stage forward
+        chart = workflow.STAGE_CHART.get(scene["key"])
+        if chart in self.canvases:
+            self.tabs.setCurrentWidget(self.canvases[chart])
 
     def _render_scene(self, scene):
         """Translate a renderer-agnostic workflow scene into PyVista actors."""
@@ -486,6 +491,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.model.frf = None
         self._overlay = None
         self._blisk = None
+        self.recompute(compare=True)
+
+    def minimize_swept_overcut(self):
+        """Close the loop on the audit finding: per-ruling deviation is ~0 for a
+        cylinder on a ruled surface, so the real error is the swept-envelope
+        overcut. This switches to the global strategy and turns on the swept
+        penalty (swept_weight) so the optimiser actually reduces that error,
+        trading a little per-ruling residual. One click, then recompute."""
+        self.model.strategy = "global"
+        self.strategy_cb.setCurrentText("global")
+        w = 0.5 if self.model.values.get("swept_weight", 0.0) <= 0.0 else \
+            self.model.values["swept_weight"]
+        self.model.values["swept_weight"] = w
+        if "swept_weight" in self._editors:
+            self._editors["swept_weight"].setValue(w)   # reflect in the panel
+        self.status.showMessage(
+            f"minimizing swept overcut (global, swept_weight={w})…")
         self.recompute(compare=True)
 
     def show_double_flank(self):
