@@ -190,6 +190,11 @@ def compute(p: Params) -> dict:
     vmax = p.machine.vmax() + [feed_cap_mms]
     amax = p.machine.amax() + [1.0e4]
     aprof, cycle_s = core.topp(q, vmax, amax)
+    # per-move durations from the TOPP profile (sum == cycle time); used to post
+    # inverse-time (G93) feedrates so the G-code realises the optimal schedule.
+    ds_s = 1.0 / (nu - 1)
+    sq = np.sqrt(np.clip(aprof, 0.0, None))
+    move_times = 2.0 * ds_s / (sq[:-1] + sq[1:] + 1e-12)
 
     return dict(
         a=a, b=b, surf=surf, devfield=devfield, strict=strict,
@@ -198,7 +203,7 @@ def compute(p: Params) -> dict:
         min_clearance=min_clear, collision_free=collision_free,
         gouge_max=gouge_max, clearance=clr,
         orient_jerk=optimize.orientation_jerk(alpha),
-        contact=contact, seglen=seglen,
+        contact=contact, seglen=seglen, move_times_s=move_times,
         feed_cap_mm_min=feed_cap,
         path_len_mm=float(seglen[-1]),
     )

@@ -485,7 +485,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if fn:
             with open(fn, "w") as fh:
                 fh.write(postproc.to_gcode(self.last["machine_path"],
-                                           self.last["feed_cap_mm_min"]))
+                                           self.last["feed_cap_mm_min"],
+                                           move_times=self.last.get("move_times_s")))
 
     def about(self):
         QtWidgets.QMessageBox.about(
