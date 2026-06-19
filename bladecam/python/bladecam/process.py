@@ -62,6 +62,19 @@ class ProcessParams:
                    self.nominal_feed_mm_min())
 
 
+def read_frf_csv(path: str):
+    """Read a measured tool-tip receptance CSV (columns: freq_hz, re, im) in
+    m/N or mm/N. Returns (freq_hz, reG_mm_per_N, imG_mm_per_N).
+
+    Values are auto-scaled to mm/N if they look like m/N (|G| < 1e-3)."""
+    import numpy as np
+    d = np.loadtxt(path, delimiter=",", skiprows=1)
+    freq, re, im = d[:, 0], d[:, 1], d[:, 2]
+    if np.nanmax(np.abs(re)) < 1e-3:     # looks like m/N -> mm/N
+        re = re * 1e3; im = im * 1e3
+    return freq, re, im
+
+
 def chatter_alim_mm(Kt: float, n_teeth: int, re_frf_min: float = -2.0e-6) -> float:
     """Single-DOF regenerative chatter limiting depth (display proxy).
 

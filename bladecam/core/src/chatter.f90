@@ -13,9 +13,41 @@ module chatter_mod
   use vec3_mod, only: dp
   implicit none
   private
-  public :: stability_lobes
+  public :: stability_lobes, stability_lobes_frf
 
 contains
+
+  !> Stability lobes from a MEASURED tool-tip receptance G(f)=reg+i*img (mm/N),
+  !> sampled at nf frequencies (Hz). Same regenerative relations as the modal
+  !> model but G comes from a tap test instead of a single mode. Output arrays
+  !> have length nlobes*nf; entries where Re[G] >= 0 (no chatter) are set NaN.
+  subroutine stability_lobes_frf(freq, reg, img, nf, Kt, n_teeth, nlobes, &
+                                 rpm, alim)
+    use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
+    real(dp), intent(in)  :: freq(nf), reg(nf), img(nf), Kt
+    integer,  intent(in)  :: nf, n_teeth, nlobes
+    real(dp), intent(out) :: rpm(nlobes*nf), alim(nlobes*nf)
+    real(dp), parameter :: pi = 3.14159265358979323846_dp
+    real(dp) :: wc, psi, eps, nan
+    integer  :: lobe, j, idx
+    nan = ieee_value(1.0_dp, ieee_quiet_nan)
+    idx = 0
+    do lobe = 0, nlobes - 1
+      do j = 1, nf
+        idx = idx + 1
+        if (reg(j) < 0.0_dp) then
+          wc = 2.0_dp * pi * freq(j)
+          psi = atan2(img(j), reg(j))
+          eps = modulo(pi - 2.0_dp*psi, 2.0_dp*pi)
+          alim(idx) = -1.0_dp / (2.0_dp * Kt * real(n_teeth, dp) * reg(j))
+          rpm(idx) = 60.0_dp * wc / (real(n_teeth, dp) * (eps + 2.0_dp*pi*lobe))
+        else
+          alim(idx) = nan
+          rpm(idx) = nan
+        end if
+      end do
+    end do
+  end subroutine stability_lobes_frf
 
   subroutine stability_lobes(wn_hz, zeta, k_stiff, Kt, n_teeth, &
                              nlobes, nptsper, rpm, alim)

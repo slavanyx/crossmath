@@ -92,7 +92,7 @@ def chatter_chart(rpm, alim, nlobes, nptsper, feed_rpm=None, fig=None):
     for k in range(nlobes):
         order = np.argsort(rpm[k])
         ax.plot(rpm[k][order], alim[k][order], color="#1f77b4", lw=1.2)
-    amin = float(np.min(alim))
+    amin = float(np.nanmin(alim))
     ax.axhline(amin, color="#d62728", ls="--", lw=1,
                label=f"a_lim,min = {amin:.2f} mm")
     if feed_rpm:
@@ -103,7 +103,7 @@ def chatter_chart(rpm, alim, nlobes, nptsper, feed_rpm=None, fig=None):
     ax.set_ylim(0, amin * 8)
     # the high-speed lobe asymptotes toward infinite rpm; bound to the
     # operating range so the useful lobes are not cramped.
-    xmax = 2.0 * feed_rpm if feed_rpm else float(np.percentile(rpm, 80))
+    xmax = 2.0 * feed_rpm if feed_rpm else float(np.nanpercentile(rpm, 80))
     ax.set_xlim(0, xmax)
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)

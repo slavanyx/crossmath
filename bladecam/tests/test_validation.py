@@ -65,10 +65,33 @@ def test_global_beats_naive_floor():
           f"(global {r['dev'].max()*1000:.1f} um vs naive median {np.median(naive)*1000:.0f} um)")
 
 
+def test_topp_respects_limits():
+    """The time-optimal feed must not violate any axis velocity/acceleration
+    limit (audit 3): reconstruct the trajectory and check |vel|<=vmax, |acc|<=amax."""
+    from bladecam import core
+    from bladecam.process import MachineLimits, ProcessParams
+    r = compute(Params(strategy="global"))
+    q = np.column_stack([r["machine_path"], r["seglen"]])
+    ml = MachineLimits()
+    feed = ProcessParams().effective_feed_mm_min() / 60.0
+    vmax = np.array(ml.vmax() + [feed]); amax = np.array(ml.amax() + [1e4])
+    aprof, _ = core.topp(q, vmax, amax)
+    n = q.shape[0]; ds = 1.0 / (n - 1)
+    qp = np.gradient(q, ds, axis=0); qpp = np.gradient(qp, ds, axis=0)
+    sdd = np.gradient(aprof, ds) / 2.0
+    vel = qp * np.sqrt(np.clip(aprof, 0, None))[:, None]
+    acc = qpp * aprof[:, None] + qp * sdd[:, None]
+    check((np.abs(vel) / vmax).max() <= 1.02, "TOPP respects velocity limits",
+          f"({(np.abs(vel)/vmax).max():.3f})")
+    check((np.abs(acc) / amax).max() <= 1.05, "TOPP respects acceleration limits",
+          f"({(np.abs(acc)/amax).max():.3f})")
+
+
 def main():
     for fn in (test_developable_mills_to_zero,
                test_optimization_is_monotonic,
-               test_global_beats_naive_floor):
+               test_global_beats_naive_floor,
+               test_topp_respects_limits):
         print(fn.__name__)
         fn()
     if FAILED:

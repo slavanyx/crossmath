@@ -12,7 +12,7 @@ module bladecam_capi
   use flank_opt_mod, only: refine_minmax, optimize_global
   use kinematics_mod, only: inverse_kin_ac
   use topp_mod, only: topp_ra
-  use chatter_mod, only: stability_lobes
+  use chatter_mod, only: stability_lobes, stability_lobes_frf
   implicit none
 
 contains
@@ -84,6 +84,16 @@ contains
     call stability_lobes(wn_hz, zeta, k_stiff, Kt, n_teeth, &
                          nlobes, nptsper, rpm, alim)
   end subroutine bc_stability_lobes
+
+  !> Stability lobes from a measured FRF. rpm/alim length nlobes*nf.
+  subroutine bc_stability_lobes_frf(freq, reg, img, nf, Kt, n_teeth, nlobes, &
+                                    rpm, alim) bind(C, name="bc_stability_lobes_frf")
+    integer(c_int), value :: nf, n_teeth, nlobes
+    real(c_double), intent(in)  :: freq(nf), reg(nf), img(nf)
+    real(c_double), value       :: Kt
+    real(c_double), intent(out) :: rpm(nlobes*nf), alim(nlobes*nf)
+    call stability_lobes_frf(freq, reg, img, nf, Kt, n_teeth, nlobes, rpm, alim)
+  end subroutine bc_stability_lobes_frf
 
   !> Batch 5-axis inverse kinematics: contact points Q(3,npts) and tool axes
   !> O(3,npts) -> machine axes m(5,npts) = [X,Y,Z,A,C] (A,C in radians).
