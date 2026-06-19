@@ -58,6 +58,9 @@ _lib.bc_optimize_double_flank.argtypes = [_DBL, _DBL, _DBL, _DBL, c_int,
                                           c_int, _DBL, _DBL, _DBL, _DBL]
 _lib.bc_tool_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
                                    c_double, c_double, c_int, _DBL, c_int, _DBL]
+_lib.bc_swept_clearance.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
+                                    c_double, c_double, c_int, _DBL, c_int,
+                                    c_int, _DBL]
 _lib.bc_swept_deviation.argtypes = [_DBL, _DBL, _DBL, c_double, c_int,
                                     _DBL, c_int, _DBL]
 _lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
@@ -212,6 +215,23 @@ def tool_clearance(q0, alpha, pts, R, flute_len, holder_R, gap, holder_len):
     _lib.bc_tool_clearance(_ptr(q0), _ptr(alpha), c_double(R), c_double(flute_len),
                            c_double(holder_R), c_double(gap), c_double(holder_len),
                            c_int(nu), _ptr(pts), c_int(npts), _ptr(clr))
+    return clr
+
+
+def swept_clearance(q0, alpha, pts, R, flute_len, holder_R, gap, holder_len,
+                    nscan=12):
+    """Continuous swept-volume clearance: the minimum tool+holder clearance over
+    the WHOLE motion from each station to the next (not just sampled poses),
+    found by minimising the SDF over the interpolated motion. q0,alpha are
+    (nu,3); pts is (npts,3). Returns clr (nu,); clr[i] covers segment [i,i+1],
+    clr[-1] is the final static clearance. <0 = collision."""
+    q0 = _c(q0); alpha = _c(alpha); pts = _c(pts)
+    nu = q0.shape[0]; npts = pts.shape[0]
+    clr = np.empty(nu, dtype=np.float64)
+    _lib.bc_swept_clearance(_ptr(q0), _ptr(alpha), c_double(R), c_double(flute_len),
+                            c_double(holder_R), c_double(gap), c_double(holder_len),
+                            c_int(nu), _ptr(pts), c_int(npts), c_int(nscan),
+                            _ptr(clr))
     return clr
 
 
