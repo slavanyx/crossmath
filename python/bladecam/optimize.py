@@ -58,7 +58,7 @@ def _smoothed_field(a, b, R, nv, mm, smooth_window, tol_mm):
 
 
 def optimize_blade(a, b, ap, bp, R, nv=41, smooth_window=5, tol_mm=None,
-                   mu=1.0, gamma=0.0, nsweeps=4, strategy="global"):
+                   mu=1.0, gamma=0.0, nsweeps=3, strategy="global"):
     """Return {strategy: dict(q0, alpha, dev)} for ONE strategy (default
     'global') or, with strategy='all', every strategy.
 
