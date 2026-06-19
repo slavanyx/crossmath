@@ -55,6 +55,7 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---- shell --------------------------------------------------------------
     def _build_menu(self):
         mb = self.menuBar()
+        # --- File: import / blade source / export ---
         filem = mb.addMenu("&File")
         self._act(filem, "Import rails CSV…", self.import_rails)
         self._act(filem, "Load blade from STEP/IGES…", self.load_blade_cad)
@@ -64,14 +65,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(filem, "Load tool-tip FRF (CSV)…", self.load_frf)
         self._act(filem, "Use parametric blade", self.use_parametric)
         filem.addSeparator()
-        self._act(filem, "Compute double-flank channel", self.show_double_flank)
-        self._act(filem, "Process plan (stacked + roughing)", self.show_process_plan)
-        filem.addSeparator()
         self._act(filem, "Export blade STL…", self.export_stl)
         self._act(filem, "Export rails CSV…", self.export_rails)
         self._act(filem, "Save G-code…", self.save_gcode)
         filem.addSeparator()
         self._act(filem, "Quit", self.close, "Ctrl+Q")
+        # --- Operations: every milling operation as a first-class action ---
+        opm = mb.addMenu("&Operations")
+        self._act(opm, "Flank finish (live)", lambda: self.recompute(compare=True))
+        self._act(opm, "Double-flank channel", self.show_double_flank)
+        self._act(opm, "Channel roughing (show passes)", self.show_roughing)
+        self._act(opm, "Edge finishing (point-mill)", self.show_edge_finish)
+        opm.addSeparator()
+        self._act(opm, "Process plan (full report)", self.show_process_plan)
         self.viewm = mb.addMenu("&View")    # dock toggles added later
         helpm = mb.addMenu("&Help")
         self._act(helpm, "About", self.about)
@@ -388,21 +394,53 @@ class MainWindow(QtWidgets.QMainWindow):
             f"double-flank channel: wall-L max {r['devL'].max()*1000:.1f}µm, "
             f"wall-R max {r['devR'].max()*1000:.1f}µm")
 
+    def show_roughing(self):
+        """Visualise the layered channel-roughing passes in the 3D view."""
+        from ..pipeline import rough_channel
+        rg = rough_channel(self.model.build_params())
+        self.plotter.clear()
+        for poly in rg["passes"][::max(1, len(rg["passes"]) // 60)]:
+            self.plotter.add_mesh(pv.lines_from_points(poly), color="#ff7f0e",
+                                  line_width=1)
+        self.plotter.reset_camera(); self._overlay = None
+        self.status.showMessage(
+            f"roughing: {rg['n_axial']}×{rg['n_radial']} passes, "
+            f"{rg['total_len_mm']:.0f} mm, {rg['cycle_s']:.0f} s, "
+            f"vol {rg['removed_volume_mm3']:.0f} mm³")
+
+    def show_edge_finish(self):
+        """Visualise point-mill (ball-nose) rows on the leading-edge patch."""
+        from ..pipeline import edge_finish
+        ef = edge_finish(self.model.build_params())
+        cl = ef["cl"]
+        self.plotter.clear()
+        for k in range(cl.shape[1]):
+            self.plotter.add_mesh(pv.lines_from_points(cl[:, k, :]),
+                                  color="cyan", line_width=1)
+        self.plotter.reset_camera(); self._overlay = None
+        self.status.showMessage(
+            f"edge finishing: {ef['n_rows']} rows, "
+            f"scallop {ef['scallop']*1000:.1f} µm, path {ef['path_len_mm']:.0f} mm")
+
     def show_process_plan(self):
-        """Report stacked-pass count, finishing cycle, and a roughing estimate."""
-        from ..pipeline import stacked_flank_passes, roughing_time_estimate
+        """Full report: stacked finishing + edge finishing + real roughing."""
+        from ..pipeline import (stacked_flank_passes, edge_finish, rough_channel)
         p = self.model.build_params()
         st = stacked_flank_passes(p)
-        rg = roughing_time_estimate(p)
+        ef = edge_finish(p)
+        rg = rough_channel(p)
         QtWidgets.QMessageBox.information(
             self, "Process plan",
-            f"Blade height: {st['blade_height']:.1f} mm\n"
-            f"Finishing: {st['n_passes']} stacked flank pass(es)\n"
+            f"Blade height: {st['blade_height']:.1f} mm\n\n"
+            f"ROUGHING (layered): {rg['n_axial']}×{rg['n_radial']} passes\n"
+            f"  removed volume: {rg['removed_volume_mm3']:.0f} mm³\n"
+            f"  cycle: {rg['cycle_s']:.0f} s\n\n"
+            f"FLANK FINISH: {st['n_passes']} stacked pass(es)\n"
             f"  peak deviation: {st['dev_max']*1000:.1f} µm\n"
-            f"  finishing cycle: {st['cycle_total_s']:.1f} s\n\n"
-            f"Roughing (estimate): {rg['rough_time_s']:.0f} s\n"
-            f"  channel gap: {rg['channel_gap_mm']:.1f} mm, "
-            f"MRR {rg['mrr_mm3_min']:.0f} mm³/min")
+            f"  cycle: {st['cycle_total_s']:.1f} s\n\n"
+            f"EDGE FINISH (point-mill): {ef['n_rows']} rows\n"
+            f"  scallop: {ef['scallop']*1000:.1f} µm, "
+            f"path {ef['path_len_mm']:.0f} mm")
 
     def import_cad(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
