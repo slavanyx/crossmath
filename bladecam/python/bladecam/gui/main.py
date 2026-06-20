@@ -854,6 +854,9 @@ class MainWindow(QtWidgets.QMainWindow):
             ("min clearance", f"{r['min_clearance']:.2f} mm"),
             ("assembly clearance", f"{r.get('assembly_clearance', float('nan')):.2f} mm"),
             ("holder clearance", f"{r.get('holder_clearance', float('nan')):.2f} mm"),
+            ("hub/shroud clearance",
+             ("—" if r.get("hub_clearance", float("inf")) == float("inf")
+              else f"{r.get('hub_clearance'):.2f} mm")),
             ("structural-link clearance",
              ("—" if r.get("link_clearance", float("inf")) == float("inf")
               else f"{r.get('link_clearance'):.2f} mm")),

@@ -111,7 +111,11 @@ METRIC_HELP = {
     "assembly clearance": "Tool-assembly (flute+holder+spindle) clearance to the "
         "neighbour blades + table/fixture.",
     "holder clearance": "Holder-only clearance to the blade being machined "
-        "(the flute is tangent by design, so only the holder can hit it).",
+        "(the flute is tangent by design, so only the holder can hit it). Swept "
+        "over the motion, so a holder swinging in between stations is caught.",
+    "hub/shroud clearance": "Holder+spindle clearance to the hub disk and shroud "
+        "band (the part endwalls, revolved from the blade-root and tip rails). "
+        "The flute cuts to the hub by design, so only the upper tool is checked.",
     "structural-link clearance": "Tool assembly vs the trunnion cradle posts and "
         "machine column (kinematic links). '—' if the machine has none.",
     "fixture/body clearance": "Tool assembly vs the imported fixture/machine "
