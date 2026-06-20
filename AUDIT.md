@@ -280,7 +280,16 @@ For each angle: the question, the techniques, and BladeCAM-specific targets.
   curvature / trim-shroud — all killed.
 - Targets: `cadio.py` (`_rails_from_face*`, `_orient_hub_first`,
   `rails_from_all_faces`, `_face_min_radius`, `blades_from_cad`), `features.py`,
-  `pipeline.py` (`_blade_rails` trim).
+  `pipeline.py` (`_blade_rails` trim, fillet_machining).
+- **Fillet machining (recognised fillet -> ball-nose path):** `fillet_finish`
+  rolls a ball (r_ball<=fillet_r) along the concave root fillet. On a closed-form
+  90 deg corner EVERY invariant is exact: ball tangent to the fillet
+  (|center-contact|=r_ball), contacts on the arc (|contact-Of|=fillet_r) spanning
+  flank-tangent to hub-tangent, and the centre never gouges either wall
+  (>= r_ball from both planes, equality at the end passes). A smaller ball reaches
+  deeper, still gouge-free. Pipeline `fillet_machining` builds oriented flank/hub
+  normals and reports a no-gouge margin. Mutation: ball offset / contact radius /
+  Of bisector sign -- killed.
 
 ## 4. Module-by-module sweep (don't skip any)
 

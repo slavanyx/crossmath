@@ -179,6 +179,54 @@ def rough_channel_trochoidal(p: Params, ae_target: float = None) -> dict:
                                        p.process.effective_feed_mm_min())
 
 
+def _blade_rails_raw(p: Params):
+    """The blade rails WITHOUT the root-fillet trim (the true root edge)."""
+    if p.rails is not None:
+        return (np.ascontiguousarray(p.rails[0]),
+                np.ascontiguousarray(p.rails[1]))
+    return blade.make_blade(p.nu, p.r_hub, p.r_shroud, p.z_span,
+                            p.z_offset, p.wrap, p.twist)
+
+
+def fillet_machining(p: Params, n_across: int = 5) -> dict:
+    """Machine the recognised root fillet with a ball-nose tool: a dedicated
+    concave-blend operation along the blade root, complementing the flank-trim
+    (which keeps the flank pass OFF the fillet). The fillet runs along the
+    untrimmed root edge; the ball rolls from the flank-tangent to the hub-tangent
+    line. Returns the toolpath plus a no-gouge margin (the ball must stay >=
+    r_ball from both walls)."""
+    from . import features
+    a, b = _blade_rails_raw(p)
+    a2, b2 = _neighbour_walls(a, b, p.n_blades)
+    t_edge = np.gradient(a, axis=0)
+    t_edge = t_edge / (np.linalg.norm(t_edge, axis=1, keepdims=True) + 1e-12)
+    u = b - a                                          # ruling (flank up-direction)
+    n_flank = np.cross(u, t_edge)
+    n_flank = n_flank / (np.linalg.norm(n_flank, axis=1, keepdims=True) + 1e-12)
+    # orient the flank normal into the open channel (toward the neighbour wall)
+    chan = 0.5 * (a2 + b2) - 0.5 * (a + b)
+    flip = np.sum(n_flank * chan, axis=1) < 0.0
+    n_flank[flip] = -n_flank[flip]
+    # hub normal: flat-hub +Z approximation, made perpendicular to the edge
+    z = np.tile(np.array([0.0, 0.0, 1.0]), (a.shape[0], 1))
+    n_hub = z - np.sum(z * t_edge, axis=1, keepdims=True) * t_edge
+    n_hub = n_hub / (np.linalg.norm(n_hub, axis=1, keepdims=True) + 1e-12)
+
+    fillet_r = p.root_fillet_r if p.root_fillet_r > 0.0 else 3.0
+    r_ball = min(p.edge_R_ball, 0.95 * fillet_r)
+    fp = features.fillet_finish(a, b, n_flank, n_hub, fillet_r, r_ball, n_across)
+    C = fp["centers"]
+    # no-gouge margin: distance from each tool centre to the flank and hub planes
+    df = np.einsum("kij,ij->ki", C - a[None], n_flank)
+    dh = np.einsum("kij,ij->ki", C - a[None], n_hub)
+    min_wall = float(min(df.min(), dh.min()))
+    plen = float(np.sum(np.linalg.norm(np.diff(C, axis=1), axis=2)))
+    return dict(centers=C, contacts=fp["contacts"], axis=fp["axis"],
+                fillet_r=fillet_r, r_ball=r_ball, n_passes=n_across,
+                path_len_mm=plen, min_wall_dist_mm=min_wall,
+                gouge_free=bool(min_wall >= r_ball - 1e-6))
+
+
 def rest_machining(p: Params, nx: int = 44, ny: int = 44) -> dict:
     """Stock-aware rest-machining: carry a persistent dexel (Z-map) stock of the
     flow channel through roughing THEN finishing, so the finish pass sees only

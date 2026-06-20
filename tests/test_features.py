@@ -9,7 +9,7 @@ import tempfile
 
 try:
     import numpy as np
-    from bladecam import features, cadio
+    from bladecam import features, cadio, pipeline
     from bladecam.pipeline import compute, Params
 except ImportError as e:
     print(f"SKIP features ({e})")
@@ -108,6 +108,42 @@ def main():
     # clipping: a huge offset never inverts the ruling
     a3, _ = features.trim_root_fillet(a, b, 1e6)
     check(np.all(np.linalg.norm(b - a3, axis=1) > 0), "over-trim is clamped, not inverted")
+
+    # --- fillet machining: ball-nose toolpath for the recognised root fillet ---
+    # exact 90-degree corner (edge along x, flank +y, hub +z): the geometry is
+    # closed-form, so every invariant is checkable to machine precision
+    nuf = 6
+    ea = np.column_stack([np.linspace(0, 10, nuf), np.zeros(nuf), np.zeros(nuf)])
+    eb = ea + np.array([0, 5.0, 0])
+    nf = np.tile([0, 1., 0], (nuf, 1)); nh = np.tile([0, 0, 1.], (nuf, 1))
+    rf, rb = 4.0, 2.0
+    fp = features.fillet_finish(ea, eb, nf, nh, rf, rb, n_across=5)
+    C, P = fp["centers"], fp["contacts"]
+    check(np.allclose(np.linalg.norm(C - P, axis=2), rb),
+          "ball is tangent to the fillet (|center-contact| = r_ball)")
+    check(np.allclose(np.linalg.norm(P - fp["Of"][None], axis=2), rf),
+          "contacts lie on the fillet arc (|contact-Of| = fillet_r)")
+    check(C[..., 1].min() >= rb - 1e-9 and C[..., 2].min() >= rb - 1e-9,
+          "tool centre never gouges the flank or hub (>= r_ball from both)",
+          f"(min {min(C[...,1].min(), C[...,2].min()):.3f})")
+    check(abs(P[0, 0, 1]) < 1e-9 and abs(P[-1, 0, 2]) < 1e-9,
+          "fillet pass spans flank-tangent to hub-tangent")
+    # a smaller ball reaches DEEPER into the corner (its centre sits closer to
+    # the root apex) yet is still gouge-free; the contacts are unchanged
+    fine = features.fillet_finish(ea, eb, nf, nh, rf, 1.0, n_across=5)
+    deep_fine = np.linalg.norm(fine["centers"][2, 0] - ea[0])
+    deep_coarse = np.linalg.norm(C[2, 0] - ea[0])
+    check(deep_fine < deep_coarse and fine["centers"][..., 1].min() >= 1.0 - 1e-9
+          and np.allclose(fine["contacts"], P),
+          "a smaller ball reaches deeper into the fillet, still gouge-free")
+
+    # pipeline op: gouge-free toolpath of the right shape on the real blade
+    fm = pipeline.fillet_machining(Params(strategy="global", nu=36,
+                                          root_fillet_r=3.0))
+    check(fm["centers"].shape == (5, 36, 3) and fm["gouge_free"]
+          and np.all(np.isfinite(fm["centers"])),
+          "pipeline fillet machining is gouge-free and finite",
+          f"(min wall {fm['min_wall_dist_mm']:.2f} vs r_ball {fm['r_ball']:.2f})")
 
     # --- pipeline integration: trimming shortens the machined rulings ---
     base = compute(Params(strategy="global"))

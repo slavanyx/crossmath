@@ -17,6 +17,8 @@ The thin OpenCASCADE glue in cadio.py feeds real B-rep faces into these.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 
@@ -97,6 +99,48 @@ def is_fillet_surface(surf: np.ndarray, max_radius: float, pct: float = 90.0) ->
     curvature is at or below `max_radius` (a tight blend), so it must NOT be
     treated as a flank face."""
     return min_curvature_radius(surf, pct) <= max_radius
+
+
+# --- fillet machining (recognised fillet -> ball-nose toolpath) --------------
+def _slerp(v0, v1, t):
+    """Unit spherical interpolation between unit vectors v0, v1."""
+    d = float(np.clip(np.dot(v0, v1), -1.0, 1.0))
+    om = math.acos(d)
+    if om < 1e-9:
+        return v0
+    s = math.sin(om)
+    return (math.sin((1.0 - t) * om) * v0 + math.sin(t * om) * v1) / s
+
+
+def fillet_finish(a, b, n_flank, n_hub, fillet_r, r_ball, n_across=5):
+    """Ball-nose toolpath for a concave ROOT FILLET of radius `fillet_r` between
+    the flank and the hub, running along the blade root edge `a` (nu,3).
+
+    `n_flank`, `n_hub` (nu,3) are the unit surface normals at each station,
+    BOTH pointing into the open channel. The fillet centre O_f sits at distance
+    fillet_r from each tangent plane; a ball of radius r_ball (<= fillet_r) rolls
+    on the fillet arc from the flank-tangent line to the hub-tangent line in
+    `n_across` cross-passes. Returns dict(centers, contacts, axis) each
+    (n_across, nu, 3): the tool-centre path, the contact points on the fillet,
+    and the tool axis (the corner bisector, out of the channel)."""
+    a = np.asarray(a, float)
+    nf = np.asarray(n_flank, float); nh = np.asarray(n_hub, float)
+    nf = nf / np.linalg.norm(nf, axis=1, keepdims=True)
+    nh = nh / np.linalg.norm(nh, axis=1, keepdims=True)
+    nu = a.shape[0]
+    g = np.sum(nf * nh, axis=1)                       # cos(angle between normals)
+    Of = a + (fillet_r / (1.0 + g))[:, None] * (nf + nh)
+    axis = (nf + nh) / np.linalg.norm(nf + nh, axis=1, keepdims=True)
+    centers = np.empty((n_across, nu, 3))
+    contacts = np.empty((n_across, nu, 3))
+    for k in range(n_across):
+        t = k / (n_across - 1) if n_across > 1 else 0.0
+        for i in range(nu):
+            d = _slerp(-nf[i], -nh[i], t)             # arc direction (unit)
+            contacts[k, i] = Of[i] + fillet_r * d
+            centers[k, i] = Of[i] + (fillet_r - r_ball) * d
+    return dict(centers=centers, contacts=contacts,
+                axis=np.broadcast_to(axis, (n_across, nu, 3)).copy(), Of=Of)
 
 
 # --- root-fillet-aware rail trimming -----------------------------------------
