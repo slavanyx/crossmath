@@ -18,7 +18,7 @@ import json
 import os
 
 from . import machine as machine_lib
-from .process import ProcessParams
+from .process import ProcessParams, coeffs_for_material
 
 
 KINDS = ("machine", "tool", "strategy", "blade")
@@ -72,6 +72,14 @@ def _builtin_tools() -> dict:
         "Long-reach tapered shank": tool_to_dict(ProcessParams(
             tool_dia=10.0, flute_len=50.0, holder_dia=22.0, holder_len=60.0,
             spindle_len=140.0)),
+        # measured-coefficient tools (material-calibrated Kt/Kr/Kte/Kre)
+        "Ti-6Al-4V finisher": tool_to_dict(ProcessParams(
+            tool_dia=8.0, n_teeth=4, fz=0.04, helix_deg=38.0, flute_len=28.0,
+            holder_dia=20.0, ap=3.0, ae=1.5, **coeffs_for_material("Ti-6Al-4V"))),
+        "Inconel 718 rougher": tool_to_dict(ProcessParams(
+            tool_dia=12.0, n_teeth=5, fz=0.06, helix_deg=30.0, flute_len=35.0,
+            holder_dia=25.0, ap=4.0, ae=6.0, max_force_N=4000.0,
+            **coeffs_for_material("Inconel 718"))),
     }
 
 

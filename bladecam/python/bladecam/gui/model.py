@@ -57,6 +57,8 @@ TOOL_SPEC = [
     ("Kr",         "Kr ratio",              0.05, 1.0, 0.05, "float", "Tool / cutting"),
     ("Kte",        "Edge Kte (N/mm)",       0.0, 200.0, 1.0, "float", "Tool / cutting"),
     ("Kre",        "Edge Kre (N/mm)",       0.0, 200.0, 1.0, "float", "Tool / cutting"),
+    ("helix_deg",  "Helix angle (deg)",     0.0, 65.0, 1.0,  "float", "Tool / cutting"),
+    ("n_axial",    "Force axial slices",    1,   80,   1,    "int",   "Tool / cutting"),
     ("flute_len",  "Flute length (mm)",     5.0, 120.0, 1.0, "float", "Tool / cutting"),
     ("holder_dia", "Holder dia (mm)",       5.0, 100.0, 1.0, "float", "Tool / cutting"),
     ("holder_gap", "Holder gap (mm)",       0.0, 50.0, 0.5,  "float", "Tool / cutting"),
@@ -185,6 +187,7 @@ class AppModel:
         v = self.values
         kw = {k: v[k] for k in _TOOL_KEYS}
         kw["n_teeth"] = int(kw["n_teeth"])
+        kw["n_axial"] = int(kw["n_axial"])
         return ProcessParams(**kw)
 
     def build_params(self, strategy=None) -> Params:

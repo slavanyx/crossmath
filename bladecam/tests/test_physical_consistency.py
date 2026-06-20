@@ -79,21 +79,26 @@ def main():
     # independent sampling -- kills any engagement-arc / coefficient drift.
     import math
     def forces_ref(pp, fz, ae):
+        # independent helical reimplementation: different axial (32) and angular
+        # (360) discretisation than the production model
         R = pp.tool_dia/2; ae = max(1e-6, min(ae, 2*R))
         phi_ex = math.acos(max(-1, min(1, 1 - ae/R)))
         Ktc, Krc, N = pp.Kt, pp.Kr*pp.Kt, pp.n_teeth
-        th = np.linspace(0, 2*math.pi/N, 400, endpoint=False)
+        beta = math.radians(pp.helix_deg); nz = 32; dz = pp.ap/nz
+        zc = (np.arange(nz)+0.5)*dz; psi = zc*math.tan(beta)/R
+        th = np.linspace(0, 2*math.pi/N, 360, endpoint=False)
         Sx = np.zeros_like(th); Sy = np.zeros_like(th)
         for k in range(N):
-            phi = np.mod(th + k*2*math.pi/N, 2*math.pi); eng = phi <= phi_ex
-            s = np.sin(phi)
-            Ft = pp.ap*(Ktc*fz*s + pp.Kte)*eng; Fr = pp.ap*(Krc*fz*s + pp.Kre)*eng
-            Sx += -Ft*np.cos(phi) - Fr*np.sin(phi); Sy += Ft*np.sin(phi) - Fr*np.cos(phi)
+            phi = np.mod((th + k*2*math.pi/N)[:,None] - psi[None,:], 2*math.pi)
+            eng = phi <= phi_ex; s = np.sin(phi)
+            dFt = (Ktc*fz*s + pp.Kte)*dz*eng; dFr = (Krc*fz*s + pp.Kre)*dz*eng
+            Sx += np.sum(-dFt*np.cos(phi) - dFr*np.sin(phi), axis=1)
+            Sy += np.sum(dFt*np.sin(phi) - dFr*np.cos(phi), axis=1)
         F = np.hypot(Sx, Sy); return F.max(), F.mean()
     fp, fm = forces_ref(p, 0.07, p._ae())
     g = p.cutting_forces(0.07)
-    check(abs(g["F_peak"] - fp) < 0.5 and abs(g["F_mean"] - fm) < 0.5,
-          "force model matches independent engagement-arc integral",
+    check(abs(g["F_peak"] - fp) < 2.0 and abs(g["F_mean"] - fm) < 1.0,
+          "force model matches independent helical engagement integral",
           f"(peak {g['F_peak']:.1f} vs {fp:.1f})")
     # wider radial engagement raises the mean force (ties force to phi_ex)
     check(p.cutting_forces(0.05, ae=2*p.tool_dia/2)["F_mean"]

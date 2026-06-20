@@ -179,7 +179,18 @@ For each angle: the question, the techniques, and BladeCAM-specific targets.
   (monotone); `effective_feed` is the min; `feed_feasible` is False when forces
   overload at fz→0. Floor at 1 mm/min keeps TOPP well-posed — verify no 0-feed
   NaN downstream.
-- Targets: `process.py` (cutting_forces, *_feed_cap, feed_feasible), `pipeline.py`.
+- **Helix lag:** forces integrate over the axial depth with each slice lagged by
+  ψ(z)=z·tanβ/R. Oracles: β=0 reduces EXACTLY to the flat-tooth model; mean
+  torque/power/Fx are helix-INVARIANT (<1%) while the peak DROPS with β (cut
+  spread axially). Mutation: zero the lag → peak-drop test must fail.
+- **Measured-coefficient calibration:** per-rev average forces are linear in fz;
+  `identify_coefficients` inverts the slopes/intercepts through the arc integrals
+  (I1..I4, validated vs quadrature) to recover Kt/Kr/Kte/Kre. Oracle: synth
+  averages from KNOWN coeffs via the discrete model → recover within <2%
+  (cross-checks the two paths). Material library (Al/SS/Ti/Inconel) ordered
+  Kt: Inconel>Ti>SS>Al, usable in ProcessParams and as measured-coeff tools.
+- Targets: `process.py` (cutting_forces helix, identify_coefficients,
+  _arc_integrals, MATERIAL_COEFFS), `presets.py` (material tools), `pipeline.py`.
 
 ### M. Material-removal / dexel verification
 - Carve primitive vs brute force: removed length = analytic chord; misses outside

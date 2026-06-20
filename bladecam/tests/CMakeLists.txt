@@ -148,6 +148,12 @@ if(PYTHON3)
   set_tests_properties(machine PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Mechanistic cutting-force model (helix lag, calibration, material library)
+  add_test(NAME cutting_force
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_cutting_force.py)
+  set_tests_properties(cutting_force PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Structural machine model (kinematic-link capsule collision)
   add_test(NAME struct_machine
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_struct_machine.py)
