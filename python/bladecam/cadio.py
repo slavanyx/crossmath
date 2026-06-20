@@ -370,12 +370,63 @@ def _rails_from_face(face, nu: int = 60, ndetect: int = 11):
     return _orient_hub_first(a, b)
 
 
-def rails_from_all_faces(shape, nu: int = 60, min_area_frac: float = 0.3):
+def _shape_bbox_diag(shape) -> float:
+    from OCP.Bnd import Bnd_Box
+    from OCP.BRepBndLib import BRepBndLib
+    box = Bnd_Box()
+    BRepBndLib.Add_s(shape, box)
+    xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+    return float(np.linalg.norm([xmax - xmin, ymax - ymin, zmax - zmin]))
+
+
+def _face_grid(face, nu: int = 9, nv: int = 9) -> np.ndarray:
+    """Sample a face's surface over its UV box into an (nu,nv,3) grid (for
+    curvature-based fillet recognition)."""
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepTools import BRepTools
+    s = BRep_Tool.Surface_s(face)
+    umin, umax, vmin, vmax = BRepTools.UVBounds_s(face)
+    us = np.linspace(umin, umax, nu)
+    vs = np.linspace(vmin, vmax, nv)
+    g = np.empty((nu, nv, 3))
+    for i, uu in enumerate(us):
+        for j, vv in enumerate(vs):
+            p = s.Value(uu, vv)
+            g[i, j] = (p.X(), p.Y(), p.Z())
+    return g
+
+
+def _face_min_radius(face) -> float:
+    """Minimum radius of curvature of a face (mm). Uses the ANALYTIC surface
+    type when the kernel knows it exactly (cylinder/torus = fillet primitives),
+    else falls back to a sampled-grid curvature estimate."""
+    from OCP.BRep import BRep_Tool
+    from OCP.Geom import (Geom_CylindricalSurface, Geom_ToroidalSurface,
+                          Geom_SphericalSurface)
+    # OCP returns the most-derived registered Geom type, so isinstance suffices
+    # to read the analytic radius of a fillet primitive exactly.
+    s = BRep_Tool.Surface_s(face)
+    if isinstance(s, Geom_CylindricalSurface):
+        return float(s.Cylinder().Radius())
+    if isinstance(s, Geom_ToroidalSurface):
+        return float(s.Torus().MinorRadius())
+    if isinstance(s, Geom_SphericalSurface):
+        return float(s.Sphere().Radius())
+    from . import features
+    return features.min_curvature_radius(_face_grid(face))
+
+
+def rails_from_all_faces(shape, nu: int = 60, min_area_frac: float = 0.3,
+                         exclude_fillets: bool = True, fillet_max_r: float = None):
     """Extract rails for EVERY flank face of a blisk shape.
 
     Faces with area >= min_area_frac * (largest face area) are treated as blade
-    flanks (this rejects small fillets/edges/platform slivers). Returns a list
-    of (a, b) rail pairs, one per blade, ordered largest-area first.
+    flanks (this rejects small platform slivers). When `exclude_fillets`, faces
+    whose radius of curvature is at or below `fillet_max_r` are ALSO dropped --
+    root fillets / blends are tight-radius blends, not flanks (a large-radius
+    cylindrical flank is kept). `fillet_max_r` defaults to 8% of the shape's
+    bounding-box diagonal. Returns a list of (a, b) rail pairs, largest-area
+    first.
     """
     faces = _all_faces(shape)
     if not faces:
@@ -384,7 +435,25 @@ def rails_from_all_faces(shape, nu: int = 60, min_area_frac: float = 0.3):
     amax = max(areas)
     kept = [f for f, ar in sorted(zip(faces, areas), key=lambda t: -t[1])
             if ar >= min_area_frac * amax]
+    if exclude_fillets and kept:
+        if fillet_max_r is None:
+            fillet_max_r = 0.08 * _shape_bbox_diag(shape)
+        flanks = [f for f in kept if _face_min_radius(f) > fillet_max_r]
+        kept = flanks if flanks else kept     # never drop everything
     return [_rails_from_face(f, nu) for f in kept]
+
+
+def blades_from_cad(path: str, nu: int = 60, min_area_frac: float = 0.3,
+                    exclude_fillets: bool = True, fillet_max_r: float = None):
+    """Load a STEP/IGES blisk and recognise its blades: returns a dict with
+    `rails` (list of (a,b)) and `labels` ('main' / 'splitter' per blade, by
+    streamwise length). Root fillets/blends are excluded from the flank set."""
+    from . import features
+    rails = rails_from_all_faces(_shape_from_cad(path), nu=nu,
+                                 min_area_frac=min_area_frac,
+                                 exclude_fillets=exclude_fillets,
+                                 fillet_max_r=fillet_max_r)
+    return {"rails": rails, "labels": features.classify_blades(rails)}
 
 
 def _shape_from_cad(path: str):

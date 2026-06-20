@@ -40,6 +40,7 @@ PARAM_SPEC = [
     ("n_blades",  "Blade count",            3,    40,    1,   "int",   "Geometry"),
     ("collision_substeps", "Collision substeps", 0, 8,   1,   "int",   "Setup"),
     ("mount_clearance", "Mount clearance (mm)", 0.0, 200.0, 5.0, "float", "Setup"),
+    ("root_fillet_r", "Root fillet trim (mm)", 0.0, 20.0, 0.5, "float", "Setup"),
     ("pivot_x",   "Pivot X (mm)",          -500.0, 500.0, 5.0, "float", "Setup"),
     ("pivot_y",   "Pivot Y (mm)",          -500.0, 500.0, 5.0, "float", "Setup"),
     ("pivot_z",   "Pivot Z (mm)",          -500.0, 500.0, 5.0, "float", "Setup"),
@@ -204,6 +205,7 @@ class AppModel:
             swept_weight=v["swept_weight"], swept_window=int(v["swept_window"]),
             collision_substeps=int(v["collision_substeps"]),
             mount_clearance=v["mount_clearance"],
+            root_fillet_r=v["root_fillet_r"],
             pivot=(v["pivot_x"], v["pivot_y"], v["pivot_z"]),
             # the selected machine profile drives reachability + limits; the
             # v_rot/kind editors fine-tune the active profile

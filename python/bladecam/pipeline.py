@@ -41,6 +41,7 @@ class Params:
     collision_substeps: int = 2  # swept-motion sampling between stations
     fixture_z: float = None      # fixture/table plane z (None = no plane check)
     mount_clearance: float = 30.0  # blade base -> machine table top (mm)
+    root_fillet_r: float = 0.0   # hub-fillet trim offset (mm); 0 = no trim
     rails: tuple = None         # optional (a, b) override for external blades
     # operation parameters (were hardcoded call-site defaults; now config)
     rough_ap: float = 3.0          # roughing axial depth (mm)
@@ -58,10 +59,15 @@ class Params:
 
 def _blade_rails(p: Params):
     if p.rails is not None:
-        return (np.ascontiguousarray(p.rails[0]),
+        a, b = (np.ascontiguousarray(p.rails[0]),
                 np.ascontiguousarray(p.rails[1]))
-    return blade.make_blade(p.nu, p.r_hub, p.r_shroud, p.z_span,
-                            p.z_offset, p.wrap, p.twist)
+    else:
+        a, b = blade.make_blade(p.nu, p.r_hub, p.r_shroud, p.z_span,
+                                p.z_offset, p.wrap, p.twist)
+    if p.root_fillet_r > 0.0:
+        from . import features
+        a, b = features.trim_root_fillet(a, b, p.root_fillet_r)
+    return a, b
 
 
 def _rotz(ang: float) -> np.ndarray:
