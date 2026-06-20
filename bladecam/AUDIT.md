@@ -501,12 +501,23 @@ RESOLVED (verify they haven't regressed; don't re-report as new):
   inflated the ratio; the test now reconstructs with TOPP's own stencil and pins
   ≤1.05 (actual 1.000).
 
+- Cutting-force model RE-VERIFIED COMPLETE: the mechanistic (Altintas) model
+  integrates the HELIX LAG (psi(z)=z·tanβ/R per axial slice over teeth × depth),
+  not instantaneous engagement -- verified (helix=0 reduces exactly to the flat
+  model; mean torque/power/Fx helix-invariant; peak force drops with helix). The
+  coefficients are calibratable: identify_coefficients() recovers Kt/Kr/Kte/Kre
+  from MEASURED average forces by linear regression and round-trips the helical
+  model exactly (1850→1851.6, ...). MATERIAL_COEFFS ships representative measured
+  values. The "nominal/helix-ignored" watch-list note was stale. Residual: the
+  SHIPPED defaults are published-order, not measured for the user's specific
+  tool+material -- the user calibrates with their own force trace.
+
 OPEN (real residual limitations — state honestly, improve if in scope):
-- The blade-index move is modelled as ONE joint-linear G0 (retract-end ->
-  reapproach-start); a real post may break it into retract-plane / rapid / plunge
-  sub-moves. The imported-fixture mesh is checked as a closed solid (signed); the
-  neighbour flanks + table are exact unsigned meshes; the hub/shroud endwalls
-  remain point clouds (spacing bounded < holder radius).
+- The blade-index move is routed via a clearance plane (lift / traverse+index /
+  descend), modelled as joint-linear sub-moves; a real post's exact rapid plan
+  may differ. The imported-fixture mesh is a closed solid (signed); the neighbour
+  flanks + table are exact unsigned meshes; the hub/shroud endwalls remain point
+  clouds (spacing bounded < holder radius).
 - Head-head (kind=1) VERIFIED: IK/FK round-trip exact (1e-16); structure_capsules
   places the cradle/column static for kind=1 (workpiece fixed) and rotated for
   kind=0 -- correct. The machine spindle HEAD/housing (Machine.spindle_dia/len,
@@ -514,8 +525,6 @@ OPEN (real residual limitations — state honestly, improve if in scope):
   assembly stack, so it tilts with the part (kind=0) or the head (kind=1) and is
   checked against every obstacle (gauntlet G9). Remaining: the ram/column ABOVE
   the head and the full link kinematics are still capsule-approximate, not solid.
-- Mechanistic force coefficients (Kt/Kr/Kte/Kre) are nominal, not measured;
-  helix lag is ignored (instantaneous engagement). Treat outputs as indicative.
 - Dexel machined-error-along-normals was dropped (unreliable on coarse normals);
   only removed_volume is trusted. Z-dexel volume is Cavalieri (single direction).
 - Default tight blisk (n_blades=11) is not collision-free; barrel is verify+opt
