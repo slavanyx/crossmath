@@ -91,20 +91,27 @@ contains
     inside = mod(cnt, 2) == 1
   end function point_in_mesh
 
-  !> Signed clearance of a capsule ([p0,p1], radius r) to the mesh: the unsigned
-  !> segment-to-surface distance minus r, made NEGATIVE when the capsule lies
-  !> inside the solid (so a tool buried in a fixture body is a collision even if
-  !> it is not touching a face).
-  pure function cap_mesh_clr(p0, p1, r, tri, ntri) result(clr)
+  !> Clearance of a capsule ([p0,p1], radius r) to the mesh: the unsigned
+  !> segment-to-surface distance minus r. For a CLOSED solid (signed=.true.) the
+  !> distance is made NEGATIVE when the capsule lies inside, so a tool buried in a
+  !> fixture body is a collision even if not touching a face. For an OPEN sheet
+  !> (signed=.false. -- e.g. a thin blade flank) the inside test is meaningless
+  !> (a ray crosses the sheet an arbitrary number of times), so it is skipped: a
+  !> tool of radius r crossing a zero-thickness sheet already drives the
+  !> seg-triangle distance below r, so the unsigned clearance catches it.
+  pure function cap_mesh_clr(p0, p1, r, tri, ntri, signed) result(clr)
     integer,  intent(in) :: ntri
     real(dp), intent(in) :: p0(3), p1(3), r, tri(9,ntri)
+    logical,  intent(in) :: signed
     real(dp) :: clr, d
     integer  :: it
     d = huge(1.0_dp)
     do it = 1, ntri
       d = min(d, seg_tri_dist(p0, p1, tri(1:3,it), tri(4:6,it), tri(7:9,it)))
     end do
-    if (point_in_mesh(p0, tri, ntri) .or. point_in_mesh(p1, tri, ntri)) d = -d
+    if (signed) then
+      if (point_in_mesh(p0, tri, ntri) .or. point_in_mesh(p1, tri, ntri)) d = -d
+    end if
     clr = d - r
   end function cap_mesh_clr
 
@@ -126,13 +133,15 @@ contains
   !> capsules ([p0(3),p1(3),r]); tri(9,ntri) triangles (a(3),b(3),c(3)). Capsule
   !> endpoints are linearly interpolated over the segment (nscan samples). clr(i)
   !> covers segment [i,i+1]; clr(nu) is the static clearance. <0 = collision.
-  subroutine mesh_clearance(acaps, na, tri, ntri, nu, nscan, clr)
-    integer,  intent(in)  :: na, ntri, nu, nscan
+  subroutine mesh_clearance(acaps, na, tri, ntri, nu, nscan, signed, clr)
+    integer,  intent(in)  :: na, ntri, nu, nscan, signed
     real(dp), intent(in)  :: acaps(7,na,nu), tri(9,ntri)
     real(dp), intent(out) :: clr(nu)
     integer  :: i, ia, sstep, ns
     real(dp) :: t, c0(7), f, tbest, fbest, tlo, thi
+    logical  :: sgn
 
+    sgn = signed /= 0
     ns = max(1, nscan)
     do i = 1, nu - 1
       clr(i) = huge(1.0_dp)
@@ -142,7 +151,7 @@ contains
         do sstep = 0, ns
           t = real(sstep, dp) / real(ns, dp)
           c0 = (1.0_dp - t)*acaps(:,ia,i) + t*acaps(:,ia,i+1)
-          f = cap_mesh_clr(c0(1:3), c0(4:6), c0(7), tri, ntri)
+          f = cap_mesh_clr(c0(1:3), c0(4:6), c0(7), tri, ntri, sgn)
           if (f < fbest) then; fbest = f; tbest = t; end if
         end do
         ! ... then golden-section refine in the bracketing interval, identical to
@@ -151,7 +160,7 @@ contains
         ! continuous-motion quantity the point-cloud check does, not a coarser one)
         tlo = max(0.0_dp, tbest - 1.0_dp/real(ns, dp))
         thi = min(1.0_dp, tbest + 1.0_dp/real(ns, dp))
-        call golden_min_mesh(acaps(:,ia,i), acaps(:,ia,i+1), tri, ntri, tlo, thi, f)
+        call golden_min_mesh(acaps(:,ia,i), acaps(:,ia,i+1), tri, ntri, sgn, tlo, thi, f)
         fbest = min(fbest, f)
         if (fbest < clr(i)) clr(i) = fbest
       end do
@@ -159,44 +168,49 @@ contains
     ! final station: static
     clr(nu) = huge(1.0_dp)
     do ia = 1, na
-      f = cap_mesh_clr(acaps(1:3,ia,nu), acaps(4:6,ia,nu), acaps(7,ia,nu), tri, ntri)
+      f = cap_mesh_clr(acaps(1:3,ia,nu), acaps(4:6,ia,nu), acaps(7,ia,nu), tri, ntri, sgn)
       if (f < clr(nu)) clr(nu) = f
     end do
   end subroutine mesh_clearance
 
   !> Clearance of the linearly-interpolated capsule (endpoints ca,cb at t=0,1) to
   !> the mesh at parameter t.
-  pure function cap_seg_mesh_clr(ca, cb, t, tri, ntri) result(f)
+  pure function cap_seg_mesh_clr(ca, cb, t, tri, ntri, signed) result(f)
     integer,  intent(in) :: ntri
     real(dp), intent(in) :: ca(7), cb(7), t, tri(9,ntri)
+    logical,  intent(in) :: signed
     real(dp) :: f, c0(7)
     c0 = (1.0_dp - t)*ca + t*cb
-    f = cap_mesh_clr(c0(1:3), c0(4:6), c0(7), tri, ntri)
+    f = cap_mesh_clr(c0(1:3), c0(4:6), c0(7), tri, ntri, signed)
   end function cap_seg_mesh_clr
 
   !> Golden-section minimisation of the capsule-to-mesh clearance over t in
   !> [tlo,thi] (locally unimodal over one short segment); mirrors golden_min in
   !> collision.f90 so the mesh and obstacle-cloud checks share the same fidelity.
-  subroutine golden_min_mesh(ca, cb, tri, ntri, tlo, thi, fmin)
+  subroutine golden_min_mesh(ca, cb, tri, ntri, signed, tlo, thi, fmin)
     integer,  intent(in)  :: ntri
     real(dp), intent(in)  :: ca(7), cb(7), tri(9,ntri), tlo, thi
+    logical,  intent(in)  :: signed
     real(dp), intent(out) :: fmin
     real(dp), parameter :: gr = 0.6180339887498949_dp
     real(dp) :: a, b, c, d, fc, fd
     integer  :: it
     a = tlo; b = thi
     c = b - gr*(b - a); d = a + gr*(b - a)
-    fc = cap_seg_mesh_clr(ca, cb, c, tri, ntri)
-    fd = cap_seg_mesh_clr(ca, cb, d, tri, ntri)
-    do it = 1, 30
+    fc = cap_seg_mesh_clr(ca, cb, c, tri, ntri, signed)
+    fd = cap_seg_mesh_clr(ca, cb, d, tri, ntri, signed)
+    ! 16 golden steps shrink the bracket by 0.618^16 ~ 4e-4 of one station gap --
+    ! far below the cut tolerance, and the mesh has many triangles per pose so the
+    ! iteration count is the dominant cost.
+    do it = 1, 16
       if (fc < fd) then
         b = d; d = c; fd = fc
         c = b - gr*(b - a)
-        fc = cap_seg_mesh_clr(ca, cb, c, tri, ntri)
+        fc = cap_seg_mesh_clr(ca, cb, c, tri, ntri, signed)
       else
         a = c; c = d; fc = fd
         d = a + gr*(b - a)
-        fd = cap_seg_mesh_clr(ca, cb, d, tri, ntri)
+        fd = cap_seg_mesh_clr(ca, cb, d, tri, ntri, signed)
       end if
     end do
     fmin = min(fc, fd)

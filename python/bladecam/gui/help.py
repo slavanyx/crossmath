@@ -116,6 +116,9 @@ METRIC_HELP = {
     "hub/shroud clearance": "Holder+spindle clearance to the hub disk and shroud "
         "band (the part endwalls, revolved from the blade-root and tip rails). "
         "The flute cuts to the hub by design, so only the upper tool is checked.",
+    "approach / retract clearance": "Clearance of the lead-in (plunge to the first "
+        "cut) and lead-out (retract from the last) moves, swept along the tool "
+        "axis against the same obstacles — the non-cutting moves crashes hide in.",
     "structural-link clearance": "Tool assembly vs the trunnion cradle posts and "
         "machine column (kinematic links). '—' if the machine has none.",
     "fixture/body clearance": "Tool assembly vs the imported fixture/machine "

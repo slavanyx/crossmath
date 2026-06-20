@@ -80,7 +80,7 @@ _lib.bc_assembly_clearance.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL, _DBL,
                                        c_int, _DBL, c_int, _DBL, _DBL,
                                        c_int, c_int, _DBL]
 _lib.bc_struct_clearance.argtypes = [_DBL, c_int, _DBL, c_int, c_int, c_int, _DBL]
-_lib.bc_mesh_clearance.argtypes = [_DBL, c_int, _DBL, c_int, c_int, c_int, _DBL]
+_lib.bc_mesh_clearance.argtypes = [_DBL, c_int, _DBL, c_int, c_int, c_int, c_int, _DBL]
 _lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
@@ -370,18 +370,40 @@ def dexel_carve(q0, alpha, R, Lf, orig, dir, seg0):
     return removed, first_cut
 
 
-def mesh_clearance(acaps, tris, nscan=4):
+def mesh_clearance(acaps, tris, nscan=4, signed=True):
     """Swept clearance of the tool-assembly capsule set `acaps` (nu, na, 7) to a
     static triangle mesh `tris` (ntri, 9) where each row is [ax,ay,az, bx,by,bz,
     cx,cy,cz]. Returns clr (nu,); clr[i] covers segment [i,i+1], <0 = collision.
-    Use mesh_from_faces() to build `tris` from (verts, faces)."""
+    Use mesh_from_faces() to build `tris` from (verts, faces).
+
+    signed=True (closed solids: fixtures, machine bodies) makes the clearance
+    negative inside the volume. signed=False (OPEN sheets: a thin blade flank,
+    where the inside test is meaningless) uses the unsigned surface distance --
+    a tool of radius r crossing a zero-thickness sheet already reads <r, so the
+    unsigned clearance still catches it, with no spurious inside-flip."""
     acaps = _c(acaps); tris = _c(tris)
     nu, na = acaps.shape[0], acaps.shape[1]
     ntri = tris.shape[0]
     clr = np.empty(nu, dtype=np.float64)
     _lib.bc_mesh_clearance(_ptr(acaps), c_int(na), _ptr(tris), c_int(ntri),
-                           c_int(nu), c_int(nscan), _ptr(clr))
+                           c_int(nu), c_int(nscan), c_int(1 if signed else 0),
+                           _ptr(clr))
     return clr
+
+
+def tris_from_grid(grid):
+    """Triangulate a structured surface grid `grid` (nu, nv, 3) into the (ntri, 9)
+    layout mesh_clearance expects -- two triangles per quad cell. Used to turn a
+    neighbour blade flank into an EXACT (continuous) collision obstacle, with no
+    point-sampling gap a thin tool could thread through."""
+    grid = np.ascontiguousarray(grid, dtype=np.float64)
+    nu, nv = grid.shape[0], grid.shape[1]
+    p00 = grid[:-1, :-1]; p10 = grid[1:, :-1]
+    p01 = grid[:-1, 1:];  p11 = grid[1:, 1:]
+    t1 = np.concatenate([p00, p10, p11], axis=2)         # (nu-1, nv-1, 9)
+    t2 = np.concatenate([p00, p11, p01], axis=2)
+    return np.ascontiguousarray(
+        np.concatenate([t1.reshape(-1, 9), t2.reshape(-1, 9)], axis=0))
 
 
 def mesh_from_faces(verts, faces):

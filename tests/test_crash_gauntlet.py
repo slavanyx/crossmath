@@ -199,6 +199,43 @@ def main():
     check(p_g4 < 0, "G4 production: swept holder check catches the mid-move swing",
           f"(prod {p_g4:.2f} vs swept {swept_holder:.2f} mm)")
 
+    # ---- G5: a thin tool threads between point-cloud obstacle samples ---------
+    # A neighbour flank as a COARSE point cloud (10 mm spacing) vs the same flank
+    # as a triangle mesh. A thin flute (r=2) crossing the surface BETWEEN samples
+    # is missed by the point cloud (clears +3) but the mesh, being continuous,
+    # catches it exactly (#2: obstacle-side sampling gap).
+    nvc = 5; nuc = 5
+    grid = np.array([[[0.0, y, z] for y in np.linspace(-20, 20, nvc)]
+                     for z in np.linspace(0, 40, nuc)])
+    pts5 = grid.reshape(-1, 3)
+    tris5 = core.tris_from_grid(grid)
+    Rf = 2.0
+    capf = np.zeros((2, 1, 7))
+    capf[0, 0] = [0.0, 5.0, 15.0, 0.0, 5.0, 25.0, Rf]      # axis pierces the sheet
+    capf[1, 0] = capf[0, 0]
+    p_pts = core.assembly_clearance(np.array([[0.0, 5, 15.0], [0.0, 5, 15.0]]),
+                                    np.array([[0.0, 0, 1.0], [0.0, 0, 1.0]]),
+                                    np.array([Rf]), np.array([0.0]),
+                                    np.array([10.0]), pts5, nscan=4).min()
+    p_mesh = core.mesh_clearance(capf, tris5, nscan=4, signed=False).min()
+    check(p_pts > 0 and p_mesh < 0,
+          "G5 gap+fix: point cloud misses the thread, the mesh catches it",
+          f"(points {p_pts:.1f} > 0, mesh {p_mesh:.1f} < 0)")
+
+    # ---- G6: approach / retract moves are collision-checked -------------------
+    try:
+        from bladecam.pipeline import compute, Params
+        r6 = compute(Params(strategy="global", nu=24))
+        check("approach_clearance" in r6 and "retract_clearance" in r6,
+              "G6: pipeline reports approach & retract clearances",
+              f"(app {r6.get('approach_clearance', float('nan')):.1f}, "
+              f"ret {r6.get('retract_clearance', float('nan')):.1f} mm)")
+        check(np.isfinite(r6.get("approach_clearance", np.nan))
+              and np.isfinite(r6.get("retract_clearance", np.nan)),
+              "G6: lead-in/out clearances are finite (the moves were generated)")
+    except Exception as e:
+        check(False, "G6: approach/retract clearance", f"({e})")
+
     if FAILED:
         print(f"\nGAUNTLET GAPS (expected until fixed): {FAILED}")
         sys.exit(1)

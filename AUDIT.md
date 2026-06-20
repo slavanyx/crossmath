@@ -475,17 +475,25 @@ RESOLVED (verify they haven't regressed; don't re-report as new):
   the holder+spindle (reported as hub_clearance); gauntlet G3 catches a deep
   stubby tool diving into the hub.
 
+- Neighbour-flank obstacle as an EXACT mesh (#2): neighbour blades were point
+  clouds at the viz-grid spacing — a tool thinner than the spacing could thread
+  between samples. Now checked as continuous UNSIGNED triangle meshes
+  (mesh_clearance signed=False; a thin flank is an open sheet, so the closed-solid
+  parity inside-test is skipped — any crossing already drives the seg-triangle
+  distance below r). Gauntlet G5: a thin flute the point cloud cleared (+3) is
+  caught by the mesh (-2). Endwalls/table stay point clouds (spacing bounded <
+  holder radius / large flat solid).
+- Lead-in / lead-out collision (approach & retract): the plunge to the first cut
+  and retract from the last are now swept along the tool axis against the full
+  obstacle world (approach_clearance / retract_clearance). Gauntlet G6.
+
 OPEN (real residual limitations — state honestly, improve if in scope):
 - TOPP at an exact velocity cusp: bounded but ~1.75× amax at the singular grid
   station (discretization).
-- Approach / retract / pass-linking moves are not collision-checked — only the
-  station-to-station cutting path is (a common real-world crash source; build a
-  swept check over the entry/exit/link trajectories next).
-- Obstacles are point clouds (neighbour flanks, revolved endwalls); a tool
-  thinner than the sample spacing could thread between surface points (#2,
-  obstacle-side discretization — bound the spacing to < tool radius or use a
-  mesh/SDF). The endwall spacing IS bounded < holder radius; the neighbour-flank
-  sampling is the viz grid (verify it is fine enough for the tool radius).
+- PASS-LINKING moves between blades/passes are still not checked (only the cut
+  path + its own lead-in/out are). The table point cloud and the imported-fixture
+  closed mesh remain sampled/closed-solid; only the neighbour FLANKS are exact
+  unsigned meshes.
 - Structural collision is tool-assembly + table/fixture/hub/shroud, NOT a full
   kinematic machine model (no ram/column/spindle-housing link geometry); table
   frame assumes table-table A-C (wrong for head-head kind=1 — verify or guard).
