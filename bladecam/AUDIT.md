@@ -216,6 +216,19 @@ For each angle: the question, the techniques, and BladeCAM-specific targets.
   activate+reset, one LN per pose, tool vectors UNIT and equal to the optimised
   axis, sane reconstructed feed. Units (mm, mm/min) and signs.
 - Edge cases: single-pose path, non-unit input axis. Targets: `postproc.py`.
+- **Certified posts (`post.py`):** a PostConfig binds a control dialect
+  (Heidenhain klartext TCPM / Siemens 840D TRAORI A3·B3·C3 / Fanuc 30i G43.4
+  joint A·C) to a SPECIFIC machine, with axis letters/signs, limits and
+  tolerances. `certify()` independently re-checks travel + rotary envelope,
+  per-block rotary winding, the linearisation chord tolerance, the rotary-speed
+  limit (with a documented reconstruction margin), and a forward-kinematics
+  ROUND TRIP (posted joints reproduce the tool-tip path). Oracles: a roomy
+  machine certifies clean; out-of-travel / over-wind / kinked / over-speed paths
+  each fail their check; the Fanuc TEXT re-parses and reproduces the tip path
+  (incl. an inverted rotary sign); every library pairing generates + certifies.
+  Mutation: forward-kin order, dropped rotary sign, faked travel pass — killed.
+  Post is a 5th preset KIND (round-trips, GUI post-config editor + "Save
+  certified G-code" with the certification report).
 
 ### P. CAD I/O & feature extraction
 - Rail extraction: edge-based (trimmed faces) and UV fallback recover the rails;

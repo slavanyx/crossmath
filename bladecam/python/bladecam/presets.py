@@ -18,10 +18,11 @@ import json
 import os
 
 from . import machine as machine_lib
+from . import post as post_lib
 from .process import ProcessParams, coeffs_for_material
 
 
-KINDS = ("machine", "tool", "strategy", "blade")
+KINDS = ("machine", "tool", "strategy", "blade", "post")
 
 # fields that make up a "strategy" preset (a subset of pipeline.Params)
 STRATEGY_FIELDS = ("strategy", "R", "nv", "mu", "gamma", "barrel_R", "barrel_pos",
@@ -53,6 +54,14 @@ def tool_to_dict(p: ProcessParams) -> dict:
 def tool_from_dict(d: dict) -> ProcessParams:
     valid = {f.name for f in dataclasses.fields(ProcessParams)}
     return ProcessParams(**{k: v for k, v in d.items() if k in valid})
+
+
+def post_to_dict(c) -> dict:
+    return post_lib.to_dict(c)
+
+
+def post_from_dict(d: dict):
+    return post_lib.from_dict(d)
 
 
 # ---- built-in preset libraries -------------------------------------------
@@ -107,8 +116,13 @@ def _builtin_blades() -> dict:
     }
 
 
+def _builtin_posts() -> dict:
+    return {n: post_to_dict(c) for n, c in post_lib.CERTIFIED_POSTS.items()}
+
+
 _BUILTINS = {"machine": _builtin_machines, "tool": _builtin_tools,
-             "strategy": _builtin_strategies, "blade": _builtin_blades}
+             "strategy": _builtin_strategies, "blade": _builtin_blades,
+             "post": _builtin_posts}
 
 
 class PresetStore:

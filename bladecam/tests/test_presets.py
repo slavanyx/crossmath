@@ -83,6 +83,14 @@ def main():
         check(set(presets.BLADE_FIELDS) <= set(bp) and bp["twist"] > 1.0,
               "blade preset carries the part geometry")
 
+        # certified-post preset category (control + machine binding)
+        check("post" in presets.KINDS and len(st.names("post")) >= 3,
+              "post preset category populated")
+        pd = st.load("post", "Fanuc 31i — large gantry AC")
+        pc = presets.post_from_dict(pd)
+        check(pc.control == "fanuc" and presets.post_to_dict(pc) == pd,
+              "post preset round-trips the control binding")
+
         # --- bundle export / import (share whole configs) ---
         st.save("tool", "shop tool A", presets.tool_to_dict(ProcessParams(tool_dia=9.0)))
         st.save("strategy", "shop strat A", presets._builtin_strategies()["Min-max accuracy"])

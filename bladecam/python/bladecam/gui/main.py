@@ -78,6 +78,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(filem, "Export blade STL…", self.export_stl)
         self._act(filem, "Export rails CSV…", self.export_rails)
         self._act(filem, "Save G-code…", self.save_gcode)
+        self._act(filem, "Save certified G-code…", self.save_certified)
         self._act(filem, "Save Heidenhain klartext (.h)…", self.save_heidenhain)
         filem.addSeparator()
         self._act(filem, "Export presets…", self.export_presets)
@@ -103,7 +104,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # OrcaSlicer-style preset row: Machine / Tool / Strategy presets
         pb = self.addToolBar("Presets")
         self.preset_cbs = {}
-        for kind in ("blade", "machine", "tool", "strategy"):
+        for kind in ("blade", "machine", "tool", "strategy", "post"):
             pb.addWidget(QtWidgets.QLabel(f"  {kind.title()}: "))
             cb = QtWidgets.QComboBox()
             cb.setMinimumWidth(150)
@@ -115,6 +116,7 @@ class MainWindow(QtWidgets.QMainWindow):
         pb.addAction("Save preset…", self.save_preset_dialog)
         pb.addAction("Delete preset…", self.delete_preset_dialog)
         pb.addAction("Machine config…", self.edit_machine)
+        pb.addAction("Post config…", self.edit_post)
         self.dirty_lbl = QtWidgets.QLabel("")
         self.dirty_lbl.setStyleSheet("color: #c0392b; font-weight: bold;")
         pb.addWidget(self.dirty_lbl)
@@ -366,6 +368,78 @@ class MainWindow(QtWidgets.QMainWindow):
             upd[fn] = (editors[fn][0].value(), editors[fn][1].value())
         self.model.machine = replace(m, **upd)
         self.recompute(compare=True)
+
+    def edit_post(self):
+        """Certified-post editor: control dialect, axis letters/signs, limits and
+        tolerances of the active machine/control pairing."""
+        from dataclasses import fields, replace
+        from .. import post as post_lib
+        c = self.model.post
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(f"Post config — {c.name}")
+        form = QtWidgets.QFormLayout(dlg)
+        editors = {}
+        for f in fields(c):
+            val = getattr(c, f.name)
+            if f.name == "control":
+                ed = QtWidgets.QComboBox(); ed.addItems(["heidenhain", "siemens", "fanuc"])
+                ed.setCurrentText(val)
+            elif isinstance(val, bool):
+                ed = QtWidgets.QCheckBox(); ed.setChecked(val)
+            elif isinstance(val, (int, float)) and not isinstance(val, bool):
+                ed = QtWidgets.QDoubleSpinBox(); ed.setRange(-1e6, 1e6)
+                ed.setDecimals(4); ed.setValue(float(val))
+            else:
+                ed = QtWidgets.QLineEdit(str(val))
+            editors[f.name] = ed; form.addRow(f.name, ed)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
+                                        QtWidgets.QDialogButtonBox.Cancel)
+        bb.accepted.connect(dlg.accept); bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        upd = {}
+        for f in fields(c):
+            ed = editors[f.name]
+            if isinstance(ed, QtWidgets.QComboBox):
+                upd[f.name] = ed.currentText()
+            elif isinstance(ed, QtWidgets.QCheckBox):
+                upd[f.name] = ed.isChecked()
+            elif isinstance(ed, QtWidgets.QDoubleSpinBox):
+                v = ed.value()
+                upd[f.name] = int(v) if isinstance(getattr(c, f.name), int) else v
+            else:
+                upd[f.name] = ed.text()
+        self.model.post = replace(c, **upd)
+        self._refresh_dirty()
+
+    def save_certified(self):
+        """Generate the active certified post's program and report whether it
+        certifies on the live machine before saving."""
+        if not self.last:
+            return
+        text, rep = self.model.post_program(self.last)
+        ok = rep["certified"]
+        ext = {"heidenhain": "*.h", "siemens": "*.mpf", "fanuc": "*.nc"}.get(
+            self.model.post.control, "*.nc")
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save certified G-code", "bladecam" + ext.strip("*"),
+            f"Program ({ext})")
+        if not fn:
+            return
+        with open(fn, "w") as fh:
+            fh.write(text)
+        if ok:
+            self.status.showMessage(f"CERTIFIED on {rep['machine']} "
+                                    f"(round-trip {rep['roundtrip_max_err_mm']:.1e} mm) -> {fn}")
+        else:
+            bad = [k for k in ("within_travel", "within_rotary", "winding_ok",
+                               "linearization_ok", "rotary_speed_ok", "roundtrip_ok")
+                   if not rep[k]]
+            QtWidgets.QMessageBox.warning(
+                self, "Post not certified",
+                f"Saved, but FAILED certification on {rep['machine']}:\n"
+                + ", ".join(bad))
 
     def recompute(self, compare=False):
         self.status.showMessage("computing…")

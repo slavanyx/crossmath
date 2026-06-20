@@ -148,6 +148,12 @@ if(PYTHON3)
   set_tests_properties(machine PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Certified post-processors (control dialects + certification validator)
+  add_test(NAME post
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_post.py)
+  set_tests_properties(post PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Native-CAD feature recognition (splitters, fillet exclusion, fillet trim)
   add_test(NAME features
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_features.py)
