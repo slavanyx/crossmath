@@ -154,6 +154,12 @@ if(PYTHON3)
   set_tests_properties(project PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Inter-stage (integration) consistency: the seams between pipeline stages
+  add_test(NAME integration
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_integration.py)
+  set_tests_properties(integration PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Persistent interval-dexel stock + rest-machining
   add_test(NAME stock
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_stock.py)

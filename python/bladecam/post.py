@@ -33,8 +33,8 @@ class PostConfig:
     sign_primary: float = 1.0            # machine sign of the primary rotary
     sign_secondary: float = 1.0          # machine sign of the secondary rotary
     tcp: bool = True                     # emit tool-centre-point / TCPM mode
-    decimals: int = 3                    # linear-axis decimals
-    rotary_decimals: int = 4             # rotary-axis decimals
+    decimals: int = 4                    # linear-axis decimals (0.1 µm) -- aero-blisk grade
+    rotary_decimals: int = 5             # rotary-axis decimals (~1e-5 deg)
     safe_z: float = 50.0
     max_rotary_step_deg: float = 120.0   # per-block rotary winding alarm
     max_lin_dev_mm: float = 0.05         # linearisation chord tolerance

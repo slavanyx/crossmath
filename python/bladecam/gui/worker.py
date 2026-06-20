@@ -29,3 +29,20 @@ class ComputeWorker(QtCore.QRunnable):
                 self.signals.compare_done.emit(self.model.compute_compare_full())
         except Exception as e:  # surface errors to the status bar, keep UI alive
             self.signals.failed.emit(f"{type(e).__name__}: {e}")
+
+
+class OpWorker(QtCore.QRunnable):
+    """Runs an arbitrary heavy operation (e.g. rest-machining, fillet machining)
+    off the UI thread, emitting the result to `done` so the GUI never freezes."""
+
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+        self.signals = _Signals()
+
+    @QtCore.Slot()
+    def run(self):
+        try:
+            self.signals.done.emit(self.fn())
+        except Exception as e:
+            self.signals.failed.emit(f"{type(e).__name__}: {e}")
