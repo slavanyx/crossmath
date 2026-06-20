@@ -494,9 +494,14 @@ RESOLVED (verify they haven't regressed; don't re-report as new):
   cloud (which a thin tool could thread between, ~78 mm spacing at the rim).
   Gauntlet G8 (point cloud misses a dip the mesh catches).
 
+- TOPP velocity cusp RE-VERIFIED RESOLVED: the midpoint-acceleration scheme holds
+  the realized acceleration to 1.000× amax even at an exact velocity cusp (on- or
+  off-grid) and on real blade paths. The old "~1.75×" note was stale AND the test
+  had measured it with np.gradient-of-np.gradient (wrong boundary stencil), which
+  inflated the ratio; the test now reconstructs with TOPP's own stencil and pins
+  ≤1.05 (actual 1.000).
+
 OPEN (real residual limitations — state honestly, improve if in scope):
-- TOPP at an exact velocity cusp: bounded but ~1.75× amax at the singular grid
-  station (discretization).
 - The blade-index move is modelled as ONE joint-linear G0 (retract-end ->
   reapproach-start); a real post may break it into retract-plane / rapid / plunge
   sub-moves. The imported-fixture mesh is checked as a closed solid (signed); the

@@ -97,10 +97,23 @@ def test_topp_handles_cusp():
     from bladecam import core
 
     def accel_ratio(qq, vmax, amax):
+        # reconstruct the realized midpoint acceleration with TOPP's OWN stencil
+        # (central interior, one-sided SECOND-difference at the ends) -- not
+        # np.gradient-of-np.gradient, whose boundary stencil differs and spuriously
+        # inflates the ratio. We must check the exact quantity TOPP bounds (§T).
         n = qq.shape[0]; ds = 1.0 / (n - 1)
         aprof, T = core.topp(qq, vmax, amax)
-        qp = np.gradient(qq, ds, axis=0); qpp = np.gradient(qp, ds, axis=0)
-        # midpoint joint acceleration q''*a + q'*sdd over each segment
+        qp = np.zeros_like(qq); qpp = np.zeros_like(qq)
+        for k in range(n):
+            if k == 0:
+                qp[k] = (qq[1] - qq[0]) / ds
+                qpp[k] = (qq[2] - 2*qq[1] + qq[0]) / ds**2 if n >= 3 else 0.0
+            elif k == n - 1:
+                qp[k] = (qq[n-1] - qq[n-2]) / ds
+                qpp[k] = (qq[n-1] - 2*qq[n-2] + qq[n-3]) / ds**2 if n >= 3 else 0.0
+            else:
+                qp[k] = (qq[k+1] - qq[k-1]) / (2*ds)
+                qpp[k] = (qq[k+1] - 2*qq[k] + qq[k-1]) / ds**2
         r = 0.0
         for k in range(n - 1):
             sdd = (aprof[k+1] - aprof[k]) / (2*ds)
@@ -113,13 +126,14 @@ def test_topp_handles_cusp():
     # realistic: rotary reversal + monotone arc length (what the pipeline emits)
     qq = np.column_stack([0.8*np.sin(2*np.pi*s), np.linspace(0, 50, n)])
     r1, t1 = accel_ratio(qq, np.array([1.5, 200.]), np.array([5., 1e4]))
-    check(r1 <= 1.1, "TOPP bounds acceleration through a rotary cusp",
-          f"(ratio {r1:.2f}, was ~10x before the station scheme, ~1.75x before midpoint)")
-    # exact 1-DOF cusp -- the midpoint-acceleration formulation realises ~1.0x
+    check(r1 <= 1.05, "TOPP bounds acceleration through a rotary cusp",
+          f"(ratio {r1:.3f}; ~10x before the station scheme, ~1.75x before midpoint)")
+    # exact 1-DOF cusp -- the midpoint-acceleration formulation realises 1.0x even
+    # at the singular station (the old ~1.75x watch-list note is resolved)
     r2, t2 = accel_ratio((2.0*np.sin(np.pi*s)).reshape(n, 1),
                          np.array([1.0]), np.array([1.0]))
-    check(r2 <= 1.1, "TOPP bounds acceleration through an exact cusp",
-          f"(ratio {r2:.2f})")
+    check(r2 <= 1.05, "TOPP bounds acceleration through an exact cusp (1.0x)",
+          f"(ratio {r2:.3f})")
     # ...and the traversal stays a positive, finite time (the profile must not
     # collapse to a stalled a=0 trajectory at the cusp -- which would post a
     # bogus zero cycle time and stall the feed). A free swing of a 2-unit-
