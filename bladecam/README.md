@@ -37,7 +37,11 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Produces `build/core/libbladecam.{so,dylib}` (or `bladecam.dll` on Windows).
+Produces `build/core/libbladecam.{so,dylib}` (or `libbladecam.dll` on Windows).
+
+> **On Windows?** See the step-by-step [INSTALL_WINDOWS.md](INSTALL_WINDOWS.md)
+> (MSYS2/MinGW toolchain, building the DLL, the Python env, and the common
+> "DLL not found" gotchas).
 
 `ctest` runs 14 suites: `core` (Fortran units), `python` (pipeline + GUI-model
 smoke), `audit_regressions` / `validation` (physics + mutation-verified

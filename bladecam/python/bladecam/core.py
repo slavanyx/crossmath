@@ -21,25 +21,30 @@ def _find_library() -> str:
     env = os.environ.get("BLADECAM_LIB")
     if env and os.path.exists(env):
         return env
+    # candidate library file names per platform. Windows is listed twice because
+    # MSVC emits `bladecam.dll` while MinGW/gfortran emits `libbladecam.dll`.
     names = {
-        "linux": "libbladecam.so",
-        "darwin": "libbladecam.dylib",
-        "win32": "bladecam.dll",
+        "linux": ["libbladecam.so"],
+        "darwin": ["libbladecam.dylib"],
+        "win32": ["bladecam.dll", "libbladecam.dll"],
     }
-    libname = names.get(sys.platform, "libbladecam.so")
+    libnames = names.get(sys.platform, ["libbladecam.so"])
     here = os.path.dirname(os.path.abspath(__file__))
     roots = [
         os.path.join(here, "..", "..", "build", "core"),
         os.path.join(here, "..", "..", "build"),
+        os.path.join(here, "..", "..", "build", "core", "Release"),  # MSVC layout
+        os.path.join(here, "..", "..", "build", "Release"),
         os.getcwd(),
     ]
     for r in roots:
-        cand = os.path.join(os.path.abspath(r), libname)
-        if os.path.exists(cand):
-            return cand
+        for libname in libnames:
+            cand = os.path.join(os.path.abspath(r), libname)
+            if os.path.exists(cand):
+                return cand
     raise FileNotFoundError(
-        f"Could not find {libname}. Build the core (see README) or set "
-        f"BLADECAM_LIB to the shared library path."
+        f"Could not find {' / '.join(libnames)}. Build the core (see "
+        f"INSTALL_WINDOWS.md / README) or set BLADECAM_LIB to the library path."
     )
 
 
