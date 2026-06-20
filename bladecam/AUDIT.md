@@ -291,6 +291,61 @@ For each angle: the question, the techniques, and BladeCAM-specific targets.
   normals and reports a no-gouge margin. Mutation: ball offset / contact radius /
   Of bisector sign -- killed.
 
+### Q. Inter-stage / integration consistency (the SEAMS between stages)
+Each stage can be individually correct yet hand off wrong data to the next. Audit
+the seams, not just the boxes. Concrete scenarios (in `test_integration.py`):
+- **Full CAM chain round trip:** optimise → IK (`ik_path`) → post (`generate`) →
+  re-parse the emitted joints → `forward_kin` must reproduce the OPTIMISED
+  tool-tip contact path (currently <0.1 µm with 4-decimal posting). Catches any
+  IK-convention / axis-letter / sign / units drift across the whole chain.
+- **forces → feed → TOPP:** with a force-limited process the mechanistic cap must
+  BIND below the nominal feed, the TOPP tip feed (√aprof·dL/ds) must stay within
+  that cap, and a heavier cut must lower it. Ties `process.cutting_forces` →
+  `effective_feed` → `topp` together.
+- **recognition → trim → fillet coverage:** the flank-trim offset and the
+  fillet's flank-tangent contact must COINCIDE (closed-form r_f·√((1−g)/(1+g)),
+  = r_f at 90°), so the flank pass bottom meets the fillet pass top with no uncut
+  gap and no double-cut. Ties `trim_root_fillet` ↔ `fillet_finish`.
+- **geometry → optimise → envelope scale invariance:** scaling the blade and the
+  cutter by s scales the machined-surface error by s.
+- More seams to add: stock dexel surface ↔ `swept_surface` envelope agreement;
+  machine swap ↔ reachability ↔ post `certify` consistency; barrel tool identical
+  across optimiser/devfield/swept/dexel/render; A/C `unwrap` ↔ rotary-range
+  reachability ↔ winding alarm.
+- Targets: the whole `pipeline.compute` assembly + `post.py` + `features.py`.
+
+### R. Real-time interaction & GUI performance (responsiveness, thread safety)
+- **No work on the UI thread:** the pipeline runs in `ComputeWorker`; every HEAVY
+  operation (rest-machining ~1 s, fillet/mesh) must run via `OpWorker` off the UI
+  thread and deliver results through a signal -- never block the 3D interactor.
+  (Found & fixed: rest/fillet ops were synchronous.)
+- **Realtime 3D:** `QtInteractor` (VTK) gives true mouse orbit/zoom/pan; the
+  animation `QTimer` (~16 fps) advances the slider and `_show_tool_at` updates
+  NAMED actors (tool/contact/ghosts) -- incremental, no actor accumulation, no
+  full redraw. Param edits are debounced (single-shot QTimer) before recompute.
+- **Currency:** every result flows through `_on_results` → 3D redraw + results
+  table + the stage-bound chart cursor (§H Preview binding). Verify the displayed
+  field is the live result, colour-keyed to the swept-envelope error.
+- Targets: `gui/worker.py`, `gui/main.py` (`_run_bg`, `_anim_step`,
+  `_show_tool_at`, `_bind_stage_chart`).
+
+### S. Numerical precision & industrial tolerance budget
+- **Error budget, CAD → optimise → post → machine.** Account every contributor:
+  core math (double, validated to closed form ~1e-15), optimiser convergence
+  floor, swept-envelope residual (the PHYSICAL flank-milling limit ε∝R·ℓ²/δ²),
+  posting quantisation (now 1e-4 mm linear / 1e-5 deg rotary → sub-0.1 µm), and
+  the dexel/mesh GRID tolerances (verification only, not the cut surface).
+- **The dominant term is physical, not numeric:** a cyl/cone/barrel tool cannot
+  exactly machine a non-developable twisted flank; the residual is reported by
+  `swept_overcut` and minimised (barrel + global + stacked passes). Numerics are
+  orders of magnitude below industrial profile tolerances (impeller ±10–50 µm;
+  aero blisk ±10–25 µm + Ra 0.4–0.8 µm).
+- Audit: is the posted decimal precision ≤ 0.1× the tolerance? Does any stage
+  quantise/round below the budget (G-code decimals, viz grid mistaken for the cut
+  surface)? Does the dexel resolution bias volumes (Z-map edge, ~0.3%)?
+- Targets: `post.py` (decimals), `topp.f90` (feasibility), `flank_opt.f90`
+  (convergence), `stock.py`/`dexel.f90` (grid), `verify.py`.
+
 ## 4. Module-by-module sweep (don't skip any)
 
 Core (`core/src`): `vec3.f90`, `ruled_surface.f90`, `flank_geom.f90`,

@@ -21,7 +21,7 @@ import pyvista as pv
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
 from .model import AppModel, PARAM_SPEC, MACHINE_SPEC, TOOL_SPEC, STRATEGIES
-from .worker import ComputeWorker
+from .worker import ComputeWorker, OpWorker
 from . import charts
 from .. import postproc, cadio, workflow
 from .. import machine as machine_lib
@@ -473,6 +473,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 self, "Post not certified",
                 f"Saved, but FAILED certification on {rep['machine']}:\n"
                 + ", ".join(bad))
+
+    def _run_bg(self, fn, on_done, busy="working…"):
+        """Run a heavy operation off the UI thread so the 3D view stays
+        interactive; deliver the result to on_done on the UI thread."""
+        self.status.showMessage(busy)
+        w = OpWorker(fn)
+        w.signals.done.connect(on_done)
+        w.signals.failed.connect(lambda m: self.status.showMessage(m))
+        self.pool.start(w)
 
     def recompute(self, compare=False):
         self.status.showMessage("computing…")
@@ -1049,9 +1058,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def show_fillet_machining(self):
         """Recognised-fillet finishing: a ball-nose toolpath rolling along the
         root fillet. Renders the cross-passes and reports the no-gouge margin."""
-        import pyvista as pv
         from ..pipeline import fillet_machining
-        fm = fillet_machining(self.model.build_params())
+        p = self.model.build_params()
+        self._run_bg(lambda: fillet_machining(p), self._draw_fillet,
+                     busy="fillet finishing (building path)…")
+
+    def _draw_fillet(self, fm):
+        import pyvista as pv
         self.plotter.clear()
         if self.last is not None:
             import pyvista as _pv
@@ -1081,8 +1094,11 @@ class MainWindow(QtWidgets.QMainWindow):
         finishing and report how much the finish removes (the rest material) vs
         finishing the raw stock."""
         from ..pipeline import rest_machining
-        self.status.showMessage("rest-machining (carving stock)…")
-        rm = rest_machining(self.model.build_params())
+        p = self.model.build_params()
+        self._run_bg(lambda: rest_machining(p), self._report_rest_machining,
+                     busy="rest-machining (carving stock)…")
+
+    def _report_rest_machining(self, rm):
         QtWidgets.QMessageBox.information(
             self, "Rest-machining (dexel stock)",
             f"Channel stock: {rm['stock_volume_mm3']:.0f} mm³\n\n"
