@@ -16,6 +16,7 @@ module bladecam_capi
   use chatter_mod, only: stability_lobes, stability_lobes_frf
   use collision_mod, only: tool_clearance, swept_clearance, holder_clearance, &
                            assembly_clearance
+  use struct_machine_mod, only: struct_clearance
   use dexel_mod, only: dexel_carve
   implicit none
 
@@ -208,6 +209,17 @@ contains
     call assembly_clearance(q0, alpha, nseg, segR, segLo, segHi, nu, &
                             pts, npts, p0, n, use_plane, nscan, clr)
   end subroutine bc_assembly_clearance
+
+  !> Structural machine-model clearance: tool-side capsule set acaps(7,na,nu)
+  !> vs structure-side capsule set bcaps(7,nb,nu), swept per station. clr(nu)<0
+  !> = collision. Each capsule column is [p0(3), p1(3), radius].
+  subroutine bc_struct_clearance(acaps, na, bcaps, nb, nu, nscan, clr) &
+       bind(C, name="bc_struct_clearance")
+    integer(c_int), value :: na, nb, nu, nscan
+    real(c_double), intent(in)  :: acaps(7,na,nu), bcaps(7,nb,nu)
+    real(c_double), intent(out) :: clr(nu)
+    call struct_clearance(acaps, na, bcaps, nb, nu, nscan, clr)
+  end subroutine bc_struct_clearance
 
   !> Dexel material-removal carve: removed length and first-cut t per ray.
   subroutine bc_dexel_carve(q0, alpha, R, Lf, nu, orig, dir, seg0, nray, &

@@ -11,7 +11,8 @@ import numpy as np
 
 from . import core, blade, optimize
 from .process import MachineLimits, ProcessParams
-from .machine import reachability, structure_obstacles
+from .machine import (reachability, structure_obstacles,
+                      tool_branch_capsules, structure_capsules)
 
 
 @dataclass
@@ -247,8 +248,8 @@ def compute(p: Params) -> dict:
     # part frame it moves with the part). Its top sits mount_clearance below the
     # blade base, so the assembly must clear it -- caught at steep tilt/deep reach.
     structural = hasattr(p.machine, "table_radius")
+    mount_z = float(min(a[:, 2].min(), b[:, 2].min())) - p.mount_clearance
     if structural:
-        mount_z = float(min(a[:, 2].min(), b[:, 2].min())) - p.mount_clearance
         obstacles = np.vstack([obstacles,
                                structure_obstacles(p.machine, mount_z)])
     # stacked assembly segments (axial extents from q0 along the tool axis)
@@ -271,6 +272,19 @@ def compute(p: Params) -> dict:
                                         holder_base, pr.holder_len)
     holder_min = float(holder_self.min())
     min_clear = float(min(clr.min(), holder_min))
+    # structural machine model: tool-assembly capsules vs the trunnion cradle
+    # yoke + machine column (kinematic links placed in the part frame by the IK
+    # convention). Catches self-collisions the part-frame table/neighbour checks
+    # miss -- e.g. the holder swinging into a trunnion post at a steep tilt.
+    link_clearance = float("inf")
+    if structural and getattr(p.machine, "cradle_span", 0.0) >= 0.0:
+        struct_caps = structure_capsules(p.machine, m, p.pivot, mount_z)
+        if struct_caps.shape[1] > 0:
+            tool_caps = tool_branch_capsules(q0, alpha, seg_R, seg_lo, seg_hi)
+            link_clr = core.struct_clearance(
+                tool_caps, struct_caps, nscan=max(4, 2 * p.collision_substeps))
+            link_clearance = float(link_clr.min())
+            min_clear = min(min_clear, link_clearance)
     collision_free = bool(min_clear > 0.0)
     gouge_max = float(max(0.0, -devfield.min()))   # per-station depth past the design surface
     # swept-envelope overcut: cross-station interference the per-station model
@@ -309,6 +323,7 @@ def compute(p: Params) -> dict:
         machine_path=m, aprof=aprof, cycle_time_s=cycle_s,
         min_clearance=min_clear, collision_free=collision_free,
         holder_clearance=holder_min, assembly_clearance=float(clr.min()),
+        link_clearance=link_clearance,
         reachable=reachable, axis_violations=axis_violations,
         machine_name=machine_name, structural_check=structural,
         cut_force_peak_N=forces["F_peak"], cut_force_mean_N=forces["F_mean"],

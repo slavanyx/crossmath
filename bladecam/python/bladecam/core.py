@@ -75,6 +75,7 @@ _lib.bc_dexel_carve.argtypes = [_DBL, _DBL, c_double, _DBL, c_int,
 _lib.bc_assembly_clearance.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL, _DBL,
                                        c_int, _DBL, c_int, _DBL, _DBL,
                                        c_int, c_int, _DBL]
+_lib.bc_struct_clearance.argtypes = [_DBL, c_int, _DBL, c_int, c_int, c_int, _DBL]
 _lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
@@ -327,6 +328,23 @@ def assembly_clearance(q0, alpha, seg_R, seg_lo, seg_hi, pts,
                                _ptr(seg_lo), _ptr(seg_hi), c_int(nu), _ptr(pts),
                                c_int(npts), _ptr(p0), _ptr(n), c_int(use_plane),
                                c_int(nscan), _ptr(clr))
+    return clr
+
+
+def struct_clearance(acaps, bcaps, nscan=8):
+    """Structural machine-model clearance: minimum signed clearance between the
+    tool-side capsule set `acaps` and the structure-side capsule set `bcaps`,
+    swept per station. Both are (nu, n, 7) arrays whose last axis is
+    [p0x,p0y,p0z, p1x,p1y,p1z, radius] -- a capsule (round-capped cylinder).
+    Returns clr (nu,); clr[i] covers segment [i,i+1], clr[-1] the final static
+    pose. <0 = collision. (A capsule conservatively bounds the flat-capped tool
+    cylinder, so the clearance is never optimistic.)"""
+    acaps = _c(acaps); bcaps = _c(bcaps)
+    nu, na = acaps.shape[0], acaps.shape[1]
+    nb = bcaps.shape[1]
+    clr = np.empty(nu, dtype=np.float64)
+    _lib.bc_struct_clearance(_ptr(acaps), c_int(na), _ptr(bcaps), c_int(nb),
+                             c_int(nu), c_int(nscan), _ptr(clr))
     return clr
 
 

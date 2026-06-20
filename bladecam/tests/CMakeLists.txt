@@ -148,6 +148,12 @@ if(PYTHON3)
   set_tests_properties(machine PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Structural machine model (kinematic-link capsule collision)
+  add_test(NAME struct_machine
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_struct_machine.py)
+  set_tests_properties(struct_machine PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Preset system (machine/tool/strategy save/load + JSON round-trip)
   add_test(NAME presets
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_presets.py)
@@ -172,6 +178,7 @@ if(CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")
     ${CMAKE_SOURCE_DIR}/core/src/topp.f90
     ${CMAKE_SOURCE_DIR}/core/src/chatter.f90
     ${CMAKE_SOURCE_DIR}/core/src/collision.f90
+    ${CMAKE_SOURCE_DIR}/core/src/struct_machine.f90
     ${CMAKE_SOURCE_DIR}/core/src/dexel.f90
     ${CMAKE_SOURCE_DIR}/core/src/bladecam_capi.f90)
 endif()

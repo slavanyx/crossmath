@@ -334,16 +334,17 @@ class MainWindow(QtWidgets.QMainWindow):
         dlg.setWindowTitle(f"Machine config — {m.name}")
         form = QtWidgets.QFormLayout(dlg)
         editors = {}
-        # numeric scalar fields
-        scal = ["v_lin", "a_lin", "v_rot", "a_rot",
-                "spindle_dia", "spindle_len", "table_radius"]
+        # numeric scalar fields, derived from the dataclass so every machine
+        # parameter (incl. structural cradle/column links) is always editable
+        rng = ["x_range", "y_range", "z_range", "a_range", "c_range"]
+        skip = set(rng) | {"name", "kind"}   # name=title; kind=quick editor
+        scal = [f.name for f in fields(m) if f.name not in skip]
         for fn in scal:
             ed = QtWidgets.QDoubleSpinBox()
             ed.setRange(0.0, 1e6); ed.setDecimals(3)
             ed.setValue(float(getattr(m, fn)))
             editors[fn] = ed; form.addRow(fn, ed)
         # range fields (min,max) as two spinboxes
-        rng = ["x_range", "y_range", "z_range", "a_range", "c_range"]
         for fn in rng:
             lo, hi = getattr(m, fn)
             elo = QtWidgets.QDoubleSpinBox(); ehi = QtWidgets.QDoubleSpinBox()
@@ -656,6 +657,9 @@ class MainWindow(QtWidgets.QMainWindow):
             ("min clearance", f"{r['min_clearance']:.2f} mm"),
             ("assembly clearance", f"{r.get('assembly_clearance', float('nan')):.2f} mm"),
             ("holder clearance", f"{r.get('holder_clearance', float('nan')):.2f} mm"),
+            ("structural-link clearance",
+             ("—" if r.get("link_clearance", float("inf")) == float("inf")
+              else f"{r.get('link_clearance'):.2f} mm")),
             ("collision-free", str(r["collision_free"])),
             ("machine", r.get("machine_name", "—")),
             ("reachable", _reach_str(r)),
