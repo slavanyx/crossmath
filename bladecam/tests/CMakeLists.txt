@@ -154,6 +154,12 @@ if(PYTHON3)
   set_tests_properties(project PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Demo gallery definitions (headless smoke test, no rendering)
+  add_test(NAME demos
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_demos.py)
+  set_tests_properties(demos PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Help-system completeness (every control / stage / metric documented)
   add_test(NAME help
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_help.py)
