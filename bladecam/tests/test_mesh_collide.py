@@ -90,6 +90,25 @@ def main():
     check(deep < -0.95, "mesh refine recovers the deepest off-sample collision",
           f"({deep:.3f}, want ~ -1.0)")
 
+    # 2c) OPEN-sheet (unsigned) vs CLOSED-solid (signed): a thin flank is an open
+    # sheet. A capsule sitting clearly to ONE side (here x=-2, the side the +x
+    # parity ray must cross the sheet to escape) is 1 mm clear. signed=False reads
+    # +1 (correct); signed=True's closed-solid parity cast sees an odd crossing of
+    # the lone sheet, calls it "inside", and FLIPS to -1 (a false positive). This
+    # distinguishes the flag -- the neighbour-flank check must use unsigned.
+    vwall = np.array([[0.0, -3, 3, 0.0, 3, 3, 0.0, 0, 7]])     # one tri in x=0
+    aside = np.zeros((1, 1, 7))
+    aside[0, 0] = [-2.0, 0.0, 4.0, -2.0, 0.0, 6.0, 1.0]        # 1 mm clear at x=-2
+    unsigned = core.mesh_clearance(aside, vwall, nscan=1, signed=False)[0]
+    signed = core.mesh_clearance(aside, vwall, nscan=1, signed=True)[0]
+    check(unsigned > 0 and signed < 0,
+          "unsigned clears an open sheet where signed spuriously flips inside",
+          f"(unsigned {unsigned:.2f} > 0, signed {signed:.2f} < 0)")
+    pierce_u = np.zeros((1, 1, 7))
+    pierce_u[0, 0] = [-2.0, 0.0, 5.0, 2.0, 0.0, 5.0, 1.0]      # crosses the sheet
+    check(core.mesh_clearance(pierce_u, vwall, nscan=1, signed=False)[0] < 0,
+          "unsigned open-sheet still catches a tool crossing it")
+
     # 2b) randomised differential vs brute-force segment-triangle distance, which
     #     exercises ALL closest features (endpoint-face AND the three edge-edge
     #     terms). Segments are offset clear of the triangle so the true distance

@@ -857,6 +857,9 @@ class MainWindow(QtWidgets.QMainWindow):
             ("hub/shroud clearance",
              ("—" if r.get("hub_clearance", float("inf")) == float("inf")
               else f"{r.get('hub_clearance'):.2f} mm")),
+            ("approach / retract clearance",
+             f"{r.get('approach_clearance', float('nan')):.2f} / "
+             f"{r.get('retract_clearance', float('nan')):.2f} mm"),
             ("structural-link clearance",
              ("—" if r.get("link_clearance", float("inf")) == float("inf")
               else f"{r.get('link_clearance'):.2f} mm")),

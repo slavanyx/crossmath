@@ -235,12 +235,12 @@ contains
   end subroutine bc_dexel_carve
 
   !> Tool-assembly clearance to a triangle MESH (fixture/machine body), swept.
-  subroutine bc_mesh_clearance(acaps, na, tri, ntri, nu, nscan, clr) &
+  subroutine bc_mesh_clearance(acaps, na, tri, ntri, nu, nscan, signed, clr) &
        bind(C, name="bc_mesh_clearance")
-    integer(c_int), value :: na, ntri, nu, nscan
+    integer(c_int), value :: na, ntri, nu, nscan, signed
     real(c_double), intent(in)  :: acaps(7,na,nu), tri(9,ntri)
     real(c_double), intent(out) :: clr(nu)
-    call mesh_clearance(acaps, na, tri, ntri, nu, nscan, clr)
+    call mesh_clearance(acaps, na, tri, ntri, nu, nscan, signed, clr)
   end subroutine bc_mesh_clearance
 
   !> Interval-dexel stock carve: merged removed intervals per ray (rest-machining).

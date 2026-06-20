@@ -351,19 +351,26 @@ def compute(p: Params) -> dict:
     reachable = len(axis_violations) == 0
     machine_name = getattr(p.machine, "name", "custom limits")
 
-    # --- collision: full tool ASSEMBLY (flute+holder+spindle) vs neighbour
-    # blades, swept over the whole motion, plus an optional fixture/table plane.
+    # --- collision: full tool ASSEMBLY (flute+holder+spindle) vs the part and
+    # machine, swept over the whole motion, plus an optional fixture/table plane.
     flat = surf.reshape(-1, 3)
     pitch = 2.0 * np.pi / p.n_blades
-    obstacles = np.vstack([flat @ _rotz(pitch).T, flat @ _rotz(-pitch).T])
-    # structural machine model: add the trunnion TABLE as a static obstacle (in
-    # part frame it moves with the part). Its top sits mount_clearance below the
-    # blade base, so the assembly must clear it -- caught at steep tilt/deep reach.
+    # NEIGHBOUR FLANKS as EXACT triangle meshes (#2): a point cloud cannot detect
+    # a tool thinner than its sample spacing threading between samples, so the
+    # neighbour blades are checked as continuous unsigned meshes (a thin flank is
+    # an OPEN sheet -- the tool crossing it drives the seg-triangle distance below
+    # the radius). A modest grid keeps the chord error far below the cut tolerance.
+    ui = np.unique(np.linspace(0, nu - 1, min(nu, 18)).round().astype(int))
+    vi = np.unique(np.linspace(0, nv_grid - 1, min(nv_grid, 16)).round().astype(int))
+    ngrid = surf[np.ix_(ui, vi)]
+    neighbour_tris = np.vstack([core.tris_from_grid(ngrid @ _rotz(pitch).T),
+                                core.tris_from_grid(ngrid @ _rotz(-pitch).T)])
+    # structural machine model: the trunnion TABLE as a static obstacle cloud (in
+    # part frame it moves with the part). A big flat solid, sampled as points.
     structural = hasattr(p.machine, "table_radius")
     mount_z = float(min(a[:, 2].min(), b[:, 2].min())) - p.mount_clearance
-    if structural:
-        obstacles = np.vstack([obstacles,
-                               structure_obstacles(p.machine, mount_z)])
+    table_obs = (structure_obstacles(p.machine, mount_z) if structural
+                 else np.zeros((0, 3)))
     # stacked assembly segments (axial extents from q0 along the tool axis)
     hbase = pr.flute_len + pr.holder_gap
     sbase = hbase + pr.holder_len + pr.spindle_gap
@@ -371,7 +378,42 @@ def compute(p: Params) -> dict:
     seg_lo = np.array([0.0, hbase, sbase])
     seg_hi = np.array([pr.flute_len, hbase + pr.holder_len, sbase + pr.spindle_len])
     plane_pt = None if p.fixture_z is None else np.array([0.0, 0.0, p.fixture_z])
+    plane_n = np.array([0.0, 0.0, 1.0])
     nscan_c = max(4, 2 * p.collision_substeps)
+    reach = float(seg_hi.max() + seg_R.max())
+    kind = p.machine.kind
+    # hub / shroud ENDWALLS (#3): the rotating disk and outer band as surfaces of
+    # revolution of the root/tip rails, sampled just dense enough that the holder
+    # cannot thread between points (azimuthal & axial spacing < holder radius).
+    hgap = max(2.0, 0.8 * pr.holder_dia * 0.5)
+    r_out = float(np.hypot(b[:, 0], b[:, 1]).max())
+    nazi = max(16, int(np.ceil(2.0 * np.pi * r_out / hgap)))
+    rail_len = float(np.linalg.norm(np.diff(a, axis=0), axis=1).sum())
+    stride = max(1, nu // max(2, int(np.ceil(rail_len / hgap))))
+    aw, bw = a[::stride], b[::stride]
+    endwall = np.vstack([np.vstack([aw @ _rotz(2.0*np.pi*k/nazi).T,
+                                    bw @ _rotz(2.0*np.pi*k/nazi).T])
+                         for k in range(nazi)])
+
+    def _obstacle_clr(dqL, daL, owL, nuL):
+        """Min clearance of a (densified) pose set to the whole obstacle world:
+        neighbour meshes (full assembly, unsigned), table cloud + fixture plane
+        (full assembly), and hub/shroud endwalls (holder+spindle only). Returns a
+        per-original-segment array (length nuL) so the worst can be taken."""
+        capsL = tool_branch_capsules(dqL, daL, seg_R, seg_lo, seg_hi)
+        c = core.reduce_to_segments(
+            core.mesh_clearance(capsL, neighbour_tris, nscan=nscan_c,
+                                signed=False), owL, nuL)
+        if table_obs.shape[0] or plane_pt is not None:
+            c = np.minimum(c, core.reduce_to_segments(
+                core.assembly_clearance(dqL, daL, seg_R, seg_lo, seg_hi, table_obs,
+                                        plane_pt=plane_pt, plane_n=plane_n,
+                                        nscan=nscan_c), owL, nuL))
+        c = np.minimum(c, core.reduce_to_segments(
+            core.assembly_clearance(dqL, daL, seg_R[1:], seg_lo[1:], seg_hi[1:],
+                                    endwall, nscan=nscan_c), owL, nuL))
+        return c, capsL
+
     # JOINT-SPACE swept collision (#1+#8): the machine moves the 5 joints linearly
     # between stations, so the tool sweeps the FK of the interpolated joints -- a
     # curve, not the part-frame chord. Densify each segment in joint space (with a
@@ -379,80 +421,65 @@ def compute(p: Params) -> dict:
     # advancement guarantee) ONCE and run every swept check on the real path. The
     # IK is run on q0 itself (the tool reference the assembly is built from); its
     # rotary axes equal the posted path's, so the FK sweep is rotary-exact.
-    kind = p.machine.kind
     m_tool = core.ik_path(q0, alpha, p.pivot, kind=kind)
     m_tool[:, 3] = np.unwrap(m_tool[:, 3]); m_tool[:, 4] = np.unwrap(m_tool[:, 4])
-    reach = float(seg_hi.max() + seg_R.max())
     dense_m, dq, da, owner = core.densify_fk(m_tool, p.pivot, kind, reach)
-    clr = core.reduce_to_segments(
-        core.assembly_clearance(dq, da, seg_R, seg_lo, seg_hi, obstacles,
-                                plane_pt=plane_pt, plane_n=np.array([0.0, 0.0, 1.0]),
-                                nscan=nscan_c), owner, nu)
+    clr, tool_caps = _obstacle_clr(dq, da, owner, nu)
+    hub_clearance = float(core.reduce_to_segments(
+        core.assembly_clearance(dq, da, seg_R[1:], seg_lo[1:], seg_hi[1:],
+                                endwall, nscan=nscan_c), owner, nu).min())
     # holder vs the blade BEING machined: the flute is tangent to this blade by
-    # design (a full-tool check there is a false positive), but the holder must
-    # still clear it -- it may not at a steep lead/lean tilt, or when the flute is
-    # shorter than the ruling. SWEPT (#4) over the real motion, not per-station.
+    # design, but the holder must still clear it -- SWEPT (#4), not per-station.
     holder_base = pr.flute_len + pr.holder_gap
     holder_self = core.reduce_to_segments(
         core.holder_clearance_swept(dq, da, flat, pr.holder_dia * 0.5,
                                     holder_base, pr.holder_len, nscan=nscan_c),
         owner, nu)
     holder_min = float(holder_self.min())
-    min_clear = float(min(clr.min(), holder_min))
+    min_clear = float(min(clr.min(), holder_min, hub_clearance))
+    # LEAD-IN / LEAD-OUT (#approach/retract): the tool plunges into the first cut
+    # and retracts from the last along its own axis (sliding out of the passage).
+    # These non-cutting moves are where many real crashes happen, so check them
+    # with the same swept obstacle world. Dret pulls the whole flute clear of the
+    # part before any lateral rapid takes over.
+    Dret = float(pr.flute_len + (b[:, 2].max() - a[:, 2].min()) + 10.0)
+    nlead = 6
+
+    def _lead_clr(qend, axend):
+        ts = np.linspace(1.0, 0.0, nlead)
+        ql = qend[None, :] + ts[:, None] * Dret * axend[None, :]
+        al = np.tile(axend, (nlead, 1))
+        ml = core.ik_path(ql, al, p.pivot, kind=kind)
+        ml[:, 3] = np.unwrap(ml[:, 3]); ml[:, 4] = np.unwrap(ml[:, 4])
+        _, dql, dal, owl = core.densify_fk(ml, p.pivot, kind, reach)
+        cl, _ = _obstacle_clr(dql, dal, owl, nlead)
+        return float(cl.min())
+
+    approach_clearance = _lead_clr(q0[0], alpha[0])
+    retract_clearance = _lead_clr(q0[-1], alpha[-1])
+    min_clear = min(min_clear, approach_clearance, retract_clearance)
     # structural machine model: tool-assembly capsules vs the trunnion cradle yoke
-    # + machine column. Built on the DENSE FK poses (tool) and dense machine joints
-    # (structure placed by the table A/C), so the swing into a trunnion post is
-    # caught between stations too.
+    # + machine column, on the DENSE FK poses + dense machine joints.
     link_clearance = float("inf")
     mesh_clear = float("inf")
-    tool_caps = None
     if structural and getattr(p.machine, "cradle_span", 0.0) >= 0.0:
         struct_caps = structure_capsules(p.machine, dense_m, p.pivot, mount_z)
         if struct_caps.shape[1] > 0:
-            tool_caps = tool_branch_capsules(dq, da, seg_R, seg_lo, seg_hi)
             link_clr = core.reduce_to_segments(
                 core.struct_clearance(tool_caps, struct_caps, nscan=nscan_c),
                 owner, nu)
             link_clearance = float(link_clr.min())
             min_clear = min(min_clear, link_clearance)
     # mesh-accurate fixture / machine-body collision: the tool assembly vs an
-    # imported triangle mesh (clamps, fixture, casting) in the part frame -- the
-    # sub-mm check the capsule links approximate. Also on the dense FK poses.
+    # imported (closed) triangle mesh -- signed, so a tool buried in the body is a
+    # collision even without touching a face.
     if p.fixture_mesh is not None:
-        if tool_caps is None:
-            tool_caps = tool_branch_capsules(dq, da, seg_R, seg_lo, seg_hi)
         tris = core.mesh_from_faces(p.fixture_mesh[0], p.fixture_mesh[1])
         mclr = core.reduce_to_segments(
-            core.mesh_clearance(tool_caps, tris, nscan=nscan_c), owner, nu)
+            core.mesh_clearance(tool_caps, tris, nscan=nscan_c, signed=True),
+            owner, nu)
         mesh_clear = float(mclr.min())
         min_clear = min(min_clear, mesh_clear)
-    # hub / shroud ENDWALLS (#3): the rotating disk the blades sit on (hub) and
-    # the outer band (shroud), modelled as the surfaces of revolution of the
-    # hub rail `a` and shroud rail `b` through every passage. The flute cuts its
-    # own blade down to the hub by design, so only the HOLDER + SPINDLE (segments
-    # 1,2) are checked against the endwalls -- they must clear the hub floor and
-    # shroud band when the tool tilts or reaches deep. Reported as hub_clearance.
-    # sample the endwalls just dense enough that the holder (the smallest
-    # non-flute radius) cannot thread between points: azimuthal & axial spacing
-    # < holder radius. The hub/shroud are smooth, so this is far coarser than the
-    # blade rails (0.5 mm) and keeps the check cheap.
-    hgap = max(2.0, 0.8 * pr.holder_dia * 0.5)
-    r_out = float(np.hypot(b[:, 0], b[:, 1]).max())
-    nazi = max(16, int(np.ceil(2.0 * np.pi * r_out / hgap)))
-    rail_len = float(np.linalg.norm(np.diff(a, axis=0), axis=1).sum())
-    naxial = max(2, int(np.ceil(rail_len / hgap)))
-    stride = max(1, nu // naxial)
-    aw, bw = a[::stride], b[::stride]
-    ew = []
-    for k in range(nazi):
-        Rk = _rotz(2.0 * np.pi * k / nazi).T
-        ew.append(aw @ Rk); ew.append(bw @ Rk)
-    endwall = np.vstack(ew)
-    hub_clr = core.reduce_to_segments(
-        core.assembly_clearance(dq, da, seg_R[1:], seg_lo[1:], seg_hi[1:],
-                                endwall, nscan=nscan_c), owner, nu)
-    hub_clearance = float(hub_clr.min())
-    min_clear = min(min_clear, hub_clearance)
     collision_free = bool(min_clear > 0.0)
     gouge_max = float(max(0.0, -devfield.min()))   # per-station depth past the design surface
     # swept-envelope overcut: cross-station interference the per-station model
@@ -493,6 +520,7 @@ def compute(p: Params) -> dict:
         holder_clearance=holder_min, assembly_clearance=float(clr.min()),
         link_clearance=link_clearance, mesh_clearance=mesh_clear,
         hub_clearance=hub_clearance,
+        approach_clearance=approach_clearance, retract_clearance=retract_clearance,
         reachable=reachable, axis_violations=axis_violations,
         machine_name=machine_name, structural_check=structural,
         cut_force_peak_N=forces["F_peak"], cut_force_mean_N=forces["F_mean"],
