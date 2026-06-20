@@ -49,7 +49,8 @@ def main():
           "all_scenes covers every stage")
 
     # every stage maps to a real analysis-tab name (these drive the GUI tabs)
-    valid_tabs = {"Deviation", "Machinability", "Feed", "Compare", "Chatter"}
+    valid_tabs = {"Deviation", "Machinability", "Kinematics", "Feed",
+                  "Compare", "Chatter"}
     check(set(workflow.STAGE_CHART) == set(workflow.STAGE_KEYS),
           "STAGE_CHART covers exactly the stages")
     check(all(v in valid_tabs for v in workflow.STAGE_CHART.values()),

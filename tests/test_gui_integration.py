@@ -92,6 +92,18 @@ def main():
     r = m.compute_current()
     charts.machinability_chart(r["delta"], r["dev"])
     charts.feed_chart(r["seglen"], r["aprof"])
+    # per-stage Preview binding: the kinematics chart + station cursor on each
+    nu = r["q0"].shape[0]
+    charts.kinematics_chart(r["machine_path"])
+    charts.machinability_chart(r["delta"], r["dev"], mark=nu // 2)
+    charts.deviation_chart({m.strategy: r["dev"]}, mark=nu // 2)
+    charts.kinematics_chart(r["machine_path"], mark=nu // 2)
+    charts.feed_chart(r["seglen"], r["aprof"], mark=nu // 2)
+    # every workflow stage maps to a buildable chart (or the standalone Chatter)
+    from bladecam import workflow
+    chart_builders = {"Machinability", "Deviation", "Kinematics", "Feed", "Chatter"}
+    check(all(c in chart_builders for c in workflow.STAGE_CHART.values()),
+          "every workflow stage binds to a known analysis chart")
     rpm, al = core.stability_lobes(800, 0.03, 2e4, 800, 4, 6, 80)
     charts.chatter_chart(rpm, al, 6, 80, 12000)
     freq = np.linspace(800, 1600, 200)
