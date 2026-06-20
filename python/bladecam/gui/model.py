@@ -14,6 +14,7 @@ from ..pipeline import Params, compute
 from ..process import MachineLimits, ProcessParams
 from .. import machine as machine_lib
 from .. import presets as preset_lib
+from .. import post as post_lib
 
 
 # Strategy registry -- extend by adding the key here and in optimize.optimize_blade
@@ -106,12 +107,16 @@ class AppModel:
         # selected machine profile (a Machine; editable via the config editor)
         self.machine_name = "Generic 5-axis trunnion"
         self.machine = replace(machine_lib.get_machine(self.machine_name))
+        # selected certified post (control + machine binding)
+        self.post_name = "Heidenhain TNC640 — generic trunnion AC"
+        self.post = post_lib.get_post(self.post_name)
         # OrcaSlicer-style preset store + the active preset name per category
         self.presets = preset_lib.PresetStore()
         self.preset_names = {"machine": self.machine_name,
                              "tool": "12 mm 4FL carbide",
                              "strategy": "Flank finish (global)",
-                             "blade": "Default impeller blade"}
+                             "blade": "Default impeller blade",
+                             "post": self.post_name}
 
     def select_machine(self, name):
         """Switch to a default machine profile (resets any edits)."""
@@ -141,6 +146,9 @@ class AppModel:
             for k in preset_lib.BLADE_FIELDS:
                 if k in d:
                     self.values[k] = d[k]
+        elif kind == "post":
+            self.post = preset_lib.post_from_dict(d)
+            self.post_name = self.post.name
         self.preset_names[kind] = name
 
     def capture_preset(self, kind) -> dict:
@@ -157,6 +165,8 @@ class AppModel:
             return out
         if kind == "blade":
             return {k: self.values[k] for k in preset_lib.BLADE_FIELDS}
+        if kind == "post":
+            return preset_lib.post_to_dict(self._live_post())
         raise ValueError(kind)
 
     def save_preset(self, kind, name) -> str:
@@ -183,6 +193,24 @@ class AppModel:
         v = self.values
         return replace(self.machine, v_rot=v["v_rot"], kind=int(v["kind"]),
                        name=self.machine.name)
+
+    def _live_post(self):
+        """The active certified post, retargeted to the live machine name so the
+        post and the selected machine stay consistent."""
+        return replace(self.post, machine_name=self.machine.name)
+
+    def post_program(self, results):
+        """Generate the certified-post program for `results` plus its
+        certification report. Returns (text, report)."""
+        cfg = replace(self._live_post(), machine_name=self._live_machine().name)
+        text = post_lib.generate(cfg, results["contact"], results["alpha"],
+                                 results["machine_path"], results["feed_cap_mm_min"],
+                                 results.get("move_times_s"))
+        rep = post_lib.certify(cfg, results["machine_path"], results["contact"],
+                               self.build_params().pivot,
+                               results["feed_cap_mm_min"],
+                               results.get("move_times_s"), machine=self._live_machine())
+        return text, rep
 
     def _live_tool(self) -> ProcessParams:
         v = self.values

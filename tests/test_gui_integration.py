@@ -55,10 +55,18 @@ def main():
     m.apply_preset("tool", "16 mm 5FL roughing")
     m.apply_preset("machine", "Compact blisk cell")
     m.apply_preset("blade", "Tall twisted blade")
+    m.apply_preset("post", "Siemens 840D — compact blisk cell AC")
     p = m.build_params()
     check(p.barrel_R == 200.0 and p.process.tool_dia == 16.0
           and p.machine.name == "Compact blisk cell" and p.z_span == 40.0,
           "machine/tool/strategy/blade presets drive build_params")
+    check(m._live_post().control == "siemens",
+          "post preset selects the control dialect")
+    # the active post generates + certifies a program for the configured machine
+    _r = m.compute_current()
+    _text, _rep = m.post_program(_r)
+    check(len(_text) > 0 and "roundtrip_ok" in _rep,
+          "model posts a program and a certification report")
     check(p.pivot[2] == m.values["pivot_z"], "pivot is configurable via editors")
     check(np.all(np.isfinite(m.compute_current()["dev"])),
           "preset-configured model computes")
