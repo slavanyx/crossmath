@@ -23,6 +23,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from .model import AppModel, PARAM_SPEC, MACHINE_SPEC, TOOL_SPEC, STRATEGIES
 from .worker import ComputeWorker, OpWorker
 from . import charts
+from . import help as helpdoc
 from .. import postproc, cadio, workflow
 from .. import machine as machine_lib
 
@@ -56,7 +57,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_param_dock()    # left
         self._build_results_dock()  # right
         self._build_plots_dock()    # bottom
+        self._build_guide_dock()    # right (tabbed with Results)
         self.status = self.statusBar()
+        self._maybe_welcome()
 
         self._timer = QtCore.QTimer(singleShot=True)
         self._timer.timeout.connect(lambda: self.recompute(compare=True))
@@ -104,6 +107,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(opm, "Process plan (full report)", self.show_process_plan)
         self.viewm = mb.addMenu("&View")    # dock toggles added later
         helpm = mb.addMenu("&Help")
+        self._act(helpm, "Getting started", self.show_getting_started, "F1")
+        self._act(helpm, "Quick start", self.show_quick_start)
+        self._act(helpm, "Glossary", self.show_glossary)
+        self._act(helpm, "What's this?", QtWidgets.QWhatsThis.enterWhatsThisMode,
+                  "Shift+F1")
+        helpm.addSeparator()
         self._act(helpm, "About", self.about)
 
     def _build_toolbar(self):
@@ -132,6 +141,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # OrcaSlicer-style Prepare / Preview top-level mode
         self.prepare_act = tb.addAction("Prepare", lambda: self._set_mode(False))
         self.preview_act = tb.addAction("Preview", lambda: self._set_mode(True))
+        self.prepare_act.setStatusTip("Prepare: edit the blade, tool, machine and "
+                                      "strategy parameters.")
+        self.preview_act.setStatusTip("Preview: step through the CAM stages and "
+                                      "inspect the result in 3D.")
         for a in (self.prepare_act, self.preview_act):
             a.setCheckable(True)
         self.prepare_act.setChecked(True)
@@ -158,12 +171,15 @@ class MainWindow(QtWidgets.QMainWindow):
         wf = self.addToolBar("Workflow")
         self.insertToolBarBreak(wf)
         wf.addWidget(QtWidgets.QLabel(" Workflow: "))
-        wf.addAction("⊞ Overview", self._show_overview)
-        wf.addAction("◀ Prev", lambda: self._step_stage(-1))
+        ov = wf.addAction("⊞ Overview", self._show_overview)
+        ov.setStatusTip("Show the whole toolpath and the quick-start guide.")
+        pv_ = wf.addAction("◀ Prev", lambda: self._step_stage(-1))
+        pv_.setStatusTip("Previous CAM stage.")
         self.stage_lbl = QtWidgets.QLabel("  (overview)  ")
         self.stage_lbl.setStyleSheet("font-weight: bold;")
         wf.addWidget(self.stage_lbl)
-        wf.addAction("Next ▶", lambda: self._step_stage(+1))
+        nx = wf.addAction("Next ▶", lambda: self._step_stage(+1))
+        nx.setStatusTip("Next CAM stage — the Guide panel explains each one.")
         self._trail = True
         trail_act = wf.addAction("Sweep trail", self._toggle_trail)
         trail_act.setCheckable(True)
@@ -195,6 +211,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     ed.setDecimals(3)
                 ed.setValue(self.model.values[key])
                 ed.valueChanged.connect(self._on_param)
+                tip = helpdoc.param_tip(key)
+                if tip:
+                    ed.setToolTip(tip); ed.setStatusTip(tip)
+                    ed.setWhatsThis(tip)
                 self._editors[key] = ed
                 form.addRow(label, ed)
             vbox.addWidget(box)
@@ -214,6 +234,36 @@ class MainWindow(QtWidgets.QMainWindow):
         dock.setWidget(self.results_tbl); dock.setMaximumWidth(300)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
         self.viewm.addAction(dock.toggleViewAction())
+        self.results_dock = dock
+
+    def _build_guide_dock(self):
+        """A learn-as-you-go panel: shows what the current view means and the
+        next step, plus a quick-start in Overview. Tabbed with Results."""
+        dock = QtWidgets.QDockWidget("Guide", self)
+        self.guide = QtWidgets.QTextBrowser()
+        self.guide.setOpenExternalLinks(False)
+        dock.setWidget(self.guide); dock.setMaximumWidth(340)
+        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
+        if hasattr(self, "results_dock"):
+            self.tabifyDockWidget(self.results_dock, dock)
+            self.results_dock.raise_()
+        self.viewm.addAction(dock.toggleViewAction())
+        self.guide_dock = dock
+        self._show_overview_guide()
+
+    def _show_overview_guide(self):
+        steps = "".join(f"<li>{s}</li>" for s in helpdoc.QUICK_START)
+        self.guide.setHtml(
+            "<h3>Quick start</h3><ol>" + steps + "</ol>"
+            "<p style='color:gray'>Hover any parameter or results row for help. "
+            "Help ▸ Glossary explains the terms.</p>")
+
+    def _set_stage_guide(self, key):
+        title = next((t for k, t, _b in workflow.STAGES if k == key), key)
+        self.guide.setHtml(
+            f"<h3>{title}</h3><p>{helpdoc.stage_help(key)}</p>")
+        if hasattr(self, "guide_dock"):
+            self.guide_dock.raise_()
 
     def _build_plots_dock(self):
         dock = QtWidgets.QDockWidget("Analysis", self)
@@ -571,6 +621,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _show_overview(self):
         self._stage_idx = None
         self.stage_lbl.setText("  (overview)  ")
+        if hasattr(self, "guide"):
+            self._show_overview_guide()
         if self.last:
             self._draw_3d(self.last)
             self._fill_results(self.last)
@@ -588,6 +640,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage_lbl.setText(f"  {scene['title']}  ")
         self._render_scene(scene)
         self._fill_stage_metrics(scene)
+        self._set_stage_guide(scene["key"])
         # (re)draw the analysis chart bound to this stage from the live result,
         # with the current-station cursor, and bring it forward
         chart = workflow.STAGE_CHART.get(scene["key"])
@@ -816,8 +869,12 @@ class MainWindow(QtWidgets.QMainWindow):
         ]
         self.results_tbl.setRowCount(len(rows))
         for i, (k, v) in enumerate(rows):
-            self.results_tbl.setItem(i, 0, QtWidgets.QTableWidgetItem(k))
-            self.results_tbl.setItem(i, 1, QtWidgets.QTableWidgetItem(v))
+            tip = helpdoc.metric_tip(k)
+            mi = QtWidgets.QTableWidgetItem(k); vi = QtWidgets.QTableWidgetItem(v)
+            if tip:
+                mi.setToolTip(tip); vi.setToolTip(tip)
+            self.results_tbl.setItem(i, 0, mi)
+            self.results_tbl.setItem(i, 1, vi)
 
     def _update_chatter(self):
         """Stability lobes from a measured FRF if loaded, else a modal default."""
@@ -1195,6 +1252,50 @@ class MainWindow(QtWidgets.QMainWindow):
             self, "BladeCAM",
             "BladeCAM — 5-axis flank-milling tool-positioning toolkit\n"
             "Fortran numeric core + PySide6/PyVista GUI.")
+
+    # ---- help / onboarding --------------------------------------------------
+    def _doc_dialog(self, title, html):
+        dlg = QtWidgets.QDialog(self); dlg.setWindowTitle(title)
+        dlg.resize(560, 460)
+        v = QtWidgets.QVBoxLayout(dlg)
+        br = QtWidgets.QTextBrowser(); br.setHtml(html); v.addWidget(br)
+        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+        bb.rejected.connect(dlg.reject); bb.accepted.connect(dlg.accept)
+        v.addWidget(bb)
+        dlg.exec()
+
+    def show_getting_started(self):
+        html = "<h2>Getting started</h2>" + "".join(
+            f"<p>{p}</p>" for p in helpdoc.GETTING_STARTED.split("\n\n"))
+        self._doc_dialog("Getting started", html)
+
+    def show_quick_start(self):
+        steps = "".join(f"<li>{s}</li>" for s in helpdoc.QUICK_START)
+        self._doc_dialog("Quick start", "<h2>Quick start</h2><ol>" + steps + "</ol>")
+
+    def show_glossary(self):
+        rows = "".join(f"<p><b>{t}</b> — {d}</p>"
+                       for t, d in helpdoc.GLOSSARY.items())
+        self._doc_dialog("Glossary", "<h2>Glossary</h2>" + rows)
+
+    def _maybe_welcome(self):
+        """First-run welcome that offers the getting-started guide."""
+        from PySide6 import QtCore as _qc
+        s = _qc.QSettings("BladeCAM", "BladeCAM")
+        if s.value("seen_welcome", False, type=bool):
+            return
+        s.setValue("seen_welcome", True)
+        m = QtWidgets.QMessageBox(self)
+        m.setWindowTitle("Welcome to BladeCAM")
+        m.setText("BladeCAM positions a 5-axis flank-milling cutter on impeller "
+                  "blades and posts the G-code.")
+        m.setInformativeText("Open the getting-started guide? You can always reach "
+                             "it from Help ▸ Getting started, and hover any control "
+                             "for inline help.")
+        m.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        m.setDefaultButton(QtWidgets.QMessageBox.Yes)
+        if m.exec() == QtWidgets.QMessageBox.Yes:
+            self.show_getting_started()
 
     def _act(self, menu, text, slot, shortcut=None):
         a = QtGui.QAction(text, self)

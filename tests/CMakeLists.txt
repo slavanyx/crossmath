@@ -154,6 +154,12 @@ if(PYTHON3)
   set_tests_properties(project PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Help-system completeness (every control / stage / metric documented)
+  add_test(NAME help
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_help.py)
+  set_tests_properties(help PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Inter-stage (integration) consistency: the seams between pipeline stages
   add_test(NAME integration
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_integration.py)
