@@ -9,6 +9,7 @@ add_library(bladecam SHARED
   src/topp.f90
   src/chatter.f90
   src/collision.f90
+  src/struct_machine.f90
   src/dexel.f90
   src/bladecam_capi.f90)
 

@@ -154,8 +154,21 @@ For each angle: the question, the techniques, and BladeCAM-specific targets.
   away clears; the near-vertical optimised path must NOT false-trigger (table
   sits below the flute base by mount_clearance). Verify the frame assumption
   (table moves with the part in table-table A-C) — it is WRONG for head-head.
-- Targets: `machine.py` (Machine, reachability, structure_obstacles),
-  `collision.f90` (assembly_*), `pipeline.py` (obstacle assembly, mount_z).
+- **Structural kinematic links (capsule model):** the tool assembly vs the
+  trunnion cradle yoke (two posts + cross-beam) and machine column, each a rigid
+  link placed in the PART frame by the SAME convention as the IK (cradle: Rz(C)
+  about pivot — A-invariant relative to the part; column base-fixed: Rz(C)Rx(A);
+  head-head: structure static). Oracles: capsule-capsule clearance = segment-
+  segment distance − ra − rb, cross-checked vs brute-force sampling and closed
+  forms (parallel / collinear-overlap / crossing / point-vs-segment); the swept
+  scan must catch a mid-motion hit endpoints miss; `_rotx/_rotz` must reproduce
+  the IK world→part axis map; defaults must NOT false-trigger; a fat column
+  through the work zone must fail the collision gate. Mutation: drop the radius
+  subtraction / unclamp seg-seg / endpoints-only scan / swap Rx·Rz — all killed.
+- Targets: `machine.py` (Machine struct fields, tool_branch_capsules,
+  structure_capsules, _rotx/_rotz), `struct_machine.f90` (seg_seg_dist,
+  capsule_clearance, struct_clearance), `collision.f90` (assembly_*),
+  `pipeline.py` (obstacle assembly, mount_z, link_clearance).
 
 ### L. Cutting-force & process physics (mechanistic model)
 - Force scaling: F_peak, F_mean, power, torque must rise monotonically with fz,
