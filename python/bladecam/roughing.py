@@ -60,11 +60,17 @@ def trochoidal_channel(a, b, a2, b2, R, ae_target, feed_mm_min, circ_pts=24):
             pts.append(c_i[k] + rho * (np.cos(ph) * w_hat + np.sin(ph) * t_hat))
     coil = np.asarray(pts)
 
+    # radial-immersion engagement: cos(theta) = 1 - ae/R is only defined for a
+    # stepover ae <= 2R (a full slot is 180 deg). A larger ae is geometrically
+    # impossible (stepover wider than the cutter), so flag it rather than letting
+    # the clip silently report a valid-looking 180 deg slot.
+    engagement_feasible = bool(ae_target <= 2.0 * R)
     engagement_deg = float(np.degrees(np.arccos(np.clip(1.0 - ae_target / R, -1.0, 1.0))))
     path_len = _poly_len(coil)
     removed_volume = float(np.mean(2.0 * halfw) * height * L)
     cycle_s = (path_len / feed_mm_min) * 60.0 if feed_mm_min > 0 else float("inf")
     return dict(points=coil, engagement_deg=engagement_deg, n_loops=n_loops,
+                engagement_feasible=engagement_feasible,
                 advance_mm=L / (n_loops - 1), path_len_mm=path_len,
                 removed_volume_mm3=removed_volume, cycle_s=cycle_s)
 
