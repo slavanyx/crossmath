@@ -512,6 +512,13 @@ RESOLVED (verify they haven't regressed; don't re-report as new):
   SHIPPED defaults are published-order, not measured for the user's specific
   tool+material -- the user calibrates with their own force trace.
 
+- Collision performance: mesh_clearance now broad-phase culls each triangle by an
+  exact box-box lower bound (skip the seg-triangle distance when the AABB gap
+  already exceeds the running minimum) -- identical results, ~30% faster compute
+  (2.78s -> 1.94s; full suite 585s -> 363s). The optimiser (optimize_global,
+  ~1.6s) is the remaining floor (intrinsic optimisation work); the GUI runs
+  compute on a background thread so the UI stays live.
+
 OPEN (real residual limitations — state honestly, improve if in scope):
 - The blade-index move is routed via a clearance plane (lift / traverse+index /
   descend), modelled as joint-linear sub-moves; a real post's exact rapid plan
