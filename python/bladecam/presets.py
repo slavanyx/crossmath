@@ -107,7 +107,7 @@ def _builtin_strategies() -> dict:
 
 def _builtin_blades() -> dict:
     base = dict(nu=60, r_hub=30.0, r_shroud=55.0, z_span=20.0, z_offset=8.0,
-                wrap=0.6, twist=0.7, n_blades=11)
+                wrap=0.3, twist=0.3, n_blades=11)
     return {
         "Default impeller blade": dict(base),
         "Tall twisted blade": dict(base, z_span=40.0, twist=1.3, wrap=0.9),

@@ -23,8 +23,10 @@ class Params:
     r_shroud: float = 55.0
     z_span: float = 20.0
     z_offset: float = 8.0
-    wrap: float = 0.6
-    twist: float = 0.7
+    # moderate, machinable default blade (a clean collision-free worked example);
+    # crank wrap/twist up to see the envelope error grow.
+    wrap: float = 0.3
+    twist: float = 0.3
     n_blades: int = 11          # for neighbour-blade collision proxy
     # tool / strategy
     R: float = 6.0
@@ -36,7 +38,11 @@ class Params:
     barrel_R: float = 0.0       # barrel arc radius (0 = cylinder/cone tool)
     barrel_pos: float = 0.0     # barrel widest-point axial position (mm from q0)
     nsweeps: int = 3
-    swept_weight: float = 0.0   # global-optimizer swept-overcut penalty (0 = off)
+    # The swept-overcut penalty minimises the REPORTED envelope error but trades
+    # tool-axis smoothness (jerk/rotary winding), so it is a deliberate choice
+    # (Operations ▸ Minimize swept overcut, or the 'Low swept overcut' preset),
+    # not a silent default. 0 = off (per-ruling fit only).
+    swept_weight: float = 0.0   # global-optimizer swept-overcut penalty
     swept_window: int = 8       # neighbour index half-width for swept penalty
     collision_substeps: int = 2  # swept-motion sampling between stations
     fixture_z: float = None      # fixture/table plane z (None = no plane check)
