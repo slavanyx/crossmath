@@ -214,6 +214,12 @@ if(PYTHON3)
   set_tests_properties(crash_gauntlet PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Collision-aware positioning (advanced avoidance)
+  add_test(NAME avoidance
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_avoidance.py)
+  set_tests_properties(avoidance PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Preset system (machine/tool/strategy save/load + JSON round-trip)
   add_test(NAME presets
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_presets.py)
