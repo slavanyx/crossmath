@@ -50,7 +50,12 @@ class Params:
     swept_weight: float = 0.3   # global-optimizer swept-overcut penalty
     swept_window: int = 8       # neighbour index half-width for swept penalty
     collision_substeps: int = 2  # swept-motion sampling between stations
-    avoid_collisions: bool = True  # collision-AWARE positioning (tilt to clear)
+    # collision-AWARE positioning (tilt colliding rulings to clear). OFF by
+    # default: it is a heavyweight optimisation (a per-ruling tilt search) that
+    # only matters when a part actually collides, so it is opt-in -- enable it via
+    # the 'Avoid collisions' preset/GUI toggle or Params(avoid_collisions=True)
+    # for a part the swept-optimal axes drive into a neighbour/hub.
+    avoid_collisions: bool = False
     avoid_margin: float = 0.5    # target clearance (mm) the avoidance restores
     fixture_z: float = None      # fixture/table plane z (None = no plane check)
     mount_clearance: float = 30.0  # blade base -> machine table top (mm)
