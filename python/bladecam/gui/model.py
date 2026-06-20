@@ -120,6 +120,21 @@ class AppModel:
         self.preset_names[kind] = name
         return path
 
+    def preset_dirty(self, kind) -> bool:
+        """True if the live state for `kind` differs from its saved preset (the
+        OrcaSlicer 'modified ●' state)."""
+        name = self.preset_names.get(kind)
+        if not name:
+            return True
+        try:
+            saved = self.presets.load(kind, name)
+        except KeyError:
+            return True
+        return not preset_lib.presets_equal(self.capture_preset(kind), saved)
+
+    def dirty_kinds(self):
+        return [k for k in preset_lib.KINDS if self.preset_dirty(k)]
+
     def _live_machine(self):
         v = self.values
         return replace(self.machine, v_rot=v["v_rot"], kind=int(v["kind"]),

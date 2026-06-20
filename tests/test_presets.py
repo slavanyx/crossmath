@@ -76,6 +76,33 @@ def main():
               "presets drive a finite compute()", f"({r['machine_name']})")
         check(sp["barrel_R"] == 200.0, "barrel strategy preset carries Rb")
 
+        # --- bundle export / import (share whole configs) ---
+        st.save("tool", "shop tool A", presets.tool_to_dict(ProcessParams(tool_dia=9.0)))
+        st.save("strategy", "shop strat A", presets._builtin_strategies()["Min-max accuracy"])
+        bundle = os.path.join(root, "shop.bladecam-presets.json")
+        n = st.export_bundle(bundle)
+        check(n >= 2 and os.path.isfile(bundle), "bundle exported user presets",
+              f"({n})")
+        # import into a FRESH store on a different root
+        with tempfile.TemporaryDirectory() as root2:
+            st3 = presets.PresetStore(root=root2)
+            check("shop tool A" not in st3.user_names("tool"), "fresh store is empty")
+            imp = st3.import_bundle(bundle)
+            check(imp >= 2 and "shop tool A" in st3.user_names("tool"),
+                  "bundle imported into a fresh store", f"({imp})")
+            check(presets.tool_from_dict(st3.load("tool", "shop tool A")).tool_dia == 9.0,
+                  "imported preset keeps its values")
+            # built-ins are never shadowed by import
+            check(st3.import_bundle(bundle) >= 0, "re-import is idempotent-safe")
+
+        # --- dirty-state comparison ---
+        d = presets._builtin_strategies()["Flank finish (global)"]
+        check(presets.presets_equal(d, dict(d)), "identical dicts compare equal")
+        d2 = dict(d); d2["mu"] = d["mu"] + 1.0
+        check(not presets.presets_equal(d, d2), "changed value compares unequal")
+        d3 = dict(d); d3["mu"] = d["mu"] + 1e-12
+        check(presets.presets_equal(d, d3), "tiny float diff is within tolerance")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)
