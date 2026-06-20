@@ -80,6 +80,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(filem, "Save G-code…", self.save_gcode)
         self._act(filem, "Save Heidenhain klartext (.h)…", self.save_heidenhain)
         filem.addSeparator()
+        self._act(filem, "Export presets…", self.export_presets)
+        self._act(filem, "Import presets…", self.import_presets)
+        filem.addSeparator()
         self._act(filem, "Quit", self.close, "Ctrl+Q")
         # --- Operations: every milling operation as a first-class action ---
         opm = mb.addMenu("&Operations")
@@ -112,9 +115,19 @@ class MainWindow(QtWidgets.QMainWindow):
         pb.addAction("Save preset…", self.save_preset_dialog)
         pb.addAction("Delete preset…", self.delete_preset_dialog)
         pb.addAction("Machine config…", self.edit_machine)
+        self.dirty_lbl = QtWidgets.QLabel("")
+        self.dirty_lbl.setStyleSheet("color: #c0392b; font-weight: bold;")
+        pb.addWidget(self.dirty_lbl)
 
         tb = self.addToolBar("Main")
         self.insertToolBarBreak(tb)
+        # OrcaSlicer-style Prepare / Preview top-level mode
+        self.prepare_act = tb.addAction("Prepare", lambda: self._set_mode(False))
+        self.preview_act = tb.addAction("Preview", lambda: self._set_mode(True))
+        for a in (self.prepare_act, self.preview_act):
+            a.setCheckable(True)
+        self.prepare_act.setChecked(True)
+        tb.addSeparator()
         tb.addWidget(QtWidgets.QLabel(" Strategy: "))
         self.strategy_cb = QtWidgets.QComboBox()
         self.strategy_cb.addItems(STRATEGIES)
@@ -180,6 +193,7 @@ class MainWindow(QtWidgets.QMainWindow):
         vbox.addStretch()
         scroll.setWidget(host); dock.setWidget(scroll)
         dock.setMaximumWidth(340)
+        self.param_dock = dock
         self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
         self.viewm.addAction(dock.toggleViewAction())
 
@@ -203,6 +217,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.canvases[name] = c
             self.tabs.addTab(c, name)
         dock.setWidget(self.tabs)
+        self.plots_dock = dock
         self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dock)
         self.viewm.addAction(dock.toggleViewAction())
 
@@ -210,10 +225,12 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_param(self):
         for key, ed in self._editors.items():
             self.model.values[key] = ed.value()
+        self._refresh_dirty()
         self._timer.start(150)
 
     def _on_strategy(self, s):
         self.model.strategy = s
+        self._refresh_dirty()
         self._timer.start(50)
 
     def _on_preset(self, kind, name):
@@ -234,6 +251,47 @@ class MainWindow(QtWidgets.QMainWindow):
                 ed.blockSignals(True)
                 ed.setValue(self.model.values[key])
                 ed.blockSignals(False)
+        self._refresh_dirty()
+
+    def _refresh_dirty(self):
+        """OrcaSlicer 'modified ●' indicator: which presets differ from saved."""
+        dirty = self.model.dirty_kinds()
+        self.dirty_lbl.setText("  ● modified: " + ", ".join(dirty) if dirty else "")
+
+    def _set_mode(self, preview: bool):
+        """Prepare (setup/parameters) vs Preview (toolpath/verify) top-level
+        mode, OrcaSlicer-style. Prepare shows the parameter dock; Preview hides
+        it for a larger 3D view and surfaces the results/animation."""
+        self.prepare_act.setChecked(not preview)
+        self.preview_act.setChecked(preview)
+        self.param_dock.setVisible(not preview)
+        if preview and self.last is not None:
+            self._show_overview()          # reset to the full toolpath view
+
+    def export_presets(self):
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export presets", "bladecam.presets.json",
+            "Preset bundle (*.json)")
+        if fn:
+            n = self.model.presets.export_bundle(fn)
+            self.status.showMessage(f"exported {n} user presets -> {fn}")
+
+    def import_presets(self):
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Import presets", "", "Preset bundle (*.json)")
+        if not fn:
+            return
+        try:
+            n = self.model.presets.import_bundle(fn)
+        except Exception as e:
+            self.status.showMessage(f"import failed: {e}")
+            return
+        for kind, cb in self.preset_cbs.items():       # refresh the combos
+            cur = cb.currentText()
+            cb.blockSignals(True); cb.clear()
+            cb.addItems(self.model.presets.names(kind))
+            cb.setCurrentText(cur); cb.blockSignals(False)
+        self.status.showMessage(f"imported {n} presets from {fn}")
 
     def save_preset_dialog(self):
         kind, ok = QtWidgets.QInputDialog.getItem(
@@ -249,6 +307,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if cb.findText(name) < 0:
             cb.addItem(name)
         cb.blockSignals(True); cb.setCurrentText(name); cb.blockSignals(False)
+        self._refresh_dirty()
         self.status.showMessage(f"saved {kind} preset '{name}'")
 
     def delete_preset_dialog(self):

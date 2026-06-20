@@ -142,3 +142,60 @@ class PresetStore:
             os.remove(path)
             return True
         return False
+
+    # -- import / export of preset bundles (share whole configs) --
+    def export_bundle(self, path: str, include_builtins: bool = False) -> int:
+        """Write all USER presets (optionally + built-ins) of every kind to a
+        single JSON bundle. Returns the number of presets written."""
+        bundle = {"format": "bladecam-presets", "version": 1, "presets": {}}
+        n = 0
+        for kind in KINDS:
+            names = (self.names(kind) if include_builtins
+                     else self.user_names(kind))
+            bundle["presets"][kind] = {}
+            for nm in names:
+                bundle["presets"][kind][nm] = self.load(kind, nm)
+                n += 1
+        with open(path, "w") as fh:
+            json.dump(bundle, fh, indent=2, sort_keys=True)
+        return n
+
+    def import_bundle(self, path: str, overwrite: bool = True) -> int:
+        """Import presets from a bundle into the user store. Skips entries whose
+        name collides with a built-in (those are read-only). Returns the count
+        actually imported."""
+        with open(path) as fh:
+            bundle = json.load(fh)
+        if bundle.get("format") != "bladecam-presets":
+            raise ValueError("not a BladeCAM preset bundle")
+        n = 0
+        for kind, items in bundle.get("presets", {}).items():
+            if kind not in KINDS:
+                continue
+            for nm, data in items.items():
+                if self.is_builtin(kind, nm):
+                    continue                         # never shadow a built-in
+                if not overwrite and nm in self.user_names(kind):
+                    continue
+                self.save(kind, nm, data)
+                n += 1
+        return n
+
+
+def presets_equal(a: dict, b: dict, tol: float = 1e-9) -> bool:
+    """Tolerant comparison of two preset dicts (numbers within tol; nested
+    lists/tuples compared element-wise). Used for the dirty-state indicator."""
+    if set(a.keys()) != set(b.keys()):
+        return False
+    for k in a:
+        x, y = a[k], b[k]
+        if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+            if abs(float(x) - float(y)) > tol:
+                return False
+        elif isinstance(x, (list, tuple)) and isinstance(y, (list, tuple)):
+            if len(x) != len(y) or any(abs(float(p) - float(q)) > tol
+                                       for p, q in zip(x, y)):
+                return False
+        elif x != y:
+            return False
+    return True
