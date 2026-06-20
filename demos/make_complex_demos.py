@@ -73,9 +73,10 @@ DEMOS = [
     ("06_clean_showcase",
      "A complex centrifugal blisk blade — strongly twisted, tall, and leaned — "
      "tuned with a right-sized tool and channel so the whole job processes "
-     "COLLISION-FREE: the swept-optimal axes already clear, collision-aware "
-     "positioning nudges the one tight ruling, and the post certifies. The "
-     "end-to-end 'it just works' exemplar (swept ~60 um, feed-feasible).",
+     "COLLISION-FREE out of the box (swept-optimal axes already clear, no "
+     "avoidance needed), feed-feasible, and the post certifies. The end-to-end "
+     "'it just works' exemplar (swept ~120 um). Turn ON 'Avoid collisions' to "
+     "tighten the one closest ruling further.",
      dict(rh0=32, rh1=48, rs0=46, rs1=60, z_span=26, z_offset=7, wrap=0.42,
           twist=0.6, lean=0.2),
      dict(tool_dia=7, holder_dia=11, flute_len=40, holder_len=24),

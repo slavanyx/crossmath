@@ -27,7 +27,7 @@ def check(c, name, d=""):
 def main():
     # 1) a collision-free part is unchanged by avoidance (no adjustments) and the
     #    swept error is identical with avoidance on vs off
-    on = compute(Params(strategy="global", nu=36))
+    on = compute(Params(strategy="global", nu=36, avoid_collisions=True))
     off = compute(Params(strategy="global", nu=36, avoid_collisions=False))
     check(on["collision_free"] and on["avoidance_adjusted"] == 0,
           "collision-free part: avoidance makes no change",
@@ -61,7 +61,7 @@ def main():
     a2, b2 = blade.make_complex_blade(nu=60, rh0=36, rh1=52, rs0=48, rs1=64,
                                       z_span=20, z_offset=6, wrap=0.55, twist=0.7,
                                       warp=1.4, lean=0.3)
-    hard = compute(Params(strategy="global", rails=(a2, b2),
+    hard = compute(Params(strategy="global", rails=(a2, b2), avoid_collisions=True,
                           process=ProcessParams(tool_dia=8, holder_dia=14,
                                                 flute_len=38, holder_len=26),
                           n_blades=9, R=4.0, swept_weight=0.6))
