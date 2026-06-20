@@ -158,6 +158,15 @@ contains
         fbest = min(fbest, f)
         if (fbest < clr(i)) clr(i) = fbest
       end do
+      ! fixture half-space: the endpoint poses suffice here (NOT swept), and this
+      ! is provably exact, not a shortcut. For a half-space the clearance of band
+      ! segment L is q0.n + L*(ah.n) - R*sqrt(1-(ah.n)^2). q0 is linear in t; the
+      ! normalize-lerp axis takes the SHORT great-circle arc, so ah.n bulges UP
+      ! between the endpoints (never below both), and -R*sqrt(1-(ah.n)^2) rises
+      ! with ah.n -- every term lies on or above its endpoint chord, so the
+      ! minimum over t is at an endpoint. (Contrast the obstacle/mesh checks:
+      ! distance to a POINT/triangle is not concave, so those must be swept +
+      ! refined. Audit §T: this site was checked and found exact.)
       if (use_plane /= 0) then
         clr(i) = min(clr(i), &
           assembly_plane_clr(q0(:,i), ah0, nseg, segR, segLo, segHi, p0, n))

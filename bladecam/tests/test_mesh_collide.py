@@ -77,6 +77,19 @@ def main():
     out = core.mesh_clearance(cap([40, 0, -2, 40, 0, 2, 0.1]), tri.reshape(1, 9), nscan=1)[0]
     check(out > 0, "plane-crossing outside the triangle is not a collision", f"({out:.2f})")
 
+    # 2b) BETWEEN-sample refinement (audit §T): a capsule sweeps past a wall so the
+    # deepest interpenetration is at t=0.6 -- NOT one of the nscan=4 scan samples
+    # (0,.25,.5,.75,1). Distance-to-triangle is non-concave, so the coarse scan
+    # alone under-reports the depth; the golden-section refine must recover the
+    # true -1.0. (Mutation oracle: delete the refine and this drops to ~ -0.5.)
+    wall = np.array([[0.0, -3, 3, 0.0, 3, 3, 0.0, 0, 7]])     # in the x=0 plane
+    swept = np.zeros((2, 1, 7))
+    swept[0, 0] = [-3, 0, 0, -3, 0, 10, 1.0]                  # station i  (x=-3)
+    swept[1, 0] = [2, 0, 0,  2, 0, 10, 1.0]                   # station i+1 (x=+2)
+    deep = core.mesh_clearance(swept, wall, nscan=4)[0]       # zero-cross at t=0.6
+    check(deep < -0.95, "mesh refine recovers the deepest off-sample collision",
+          f"({deep:.3f}, want ~ -1.0)")
+
     # 2b) randomised differential vs brute-force segment-triangle distance, which
     #     exercises ALL closest features (endpoint-face AND the three edge-edge
     #     terms). Segments are offset clear of the triangle so the true distance
