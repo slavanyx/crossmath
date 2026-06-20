@@ -206,7 +206,18 @@ For each angle: the question, the techniques, and BladeCAM-specific targets.
   DISJOINT poses (sum, gap not counted) — both. first_cut = nearest entry.
 - Removed volume vs closed form (π R² Lf, <1%); tilted poses (Cavalieri holds);
   progressive carve over poses 0..k monotone and converges to the full volume.
-- Targets: `dexel.f90` (ray_cyl, union/merge), `verify.py` (removed_volume).
+- **Persistent interval-dexel stock (rest-machining):** `Stock` carries solid
+  intervals per ray ACROSS operations. `dexel_removed_intervals` returns the
+  merged removed intervals (validated: total length == the `dexel_carve` oracle
+  EXACTLY; intervals ascending+disjoint). Interval subtraction handles INTERIOR
+  removal (a tilted tool cutting a ray's middle leaves TWO solid intervals — the
+  reason a height field is insufficient). Oracles: block carve vs analytic
+  cylinder, sequential union/monotone/bookkeeping, missing tool = no-op, and the
+  rest-machining inequality finish-after-rough ≤ finish-from-raw (rest fraction
+  < 1). Mutation: lo≥0 clamp / interval merge / subtraction clip+tail — killed.
+- Targets: `dexel.f90` (ray_cyl, union/merge, dexel_removed_intervals),
+  `verify.py` (removed_volume), `stock.py` (Stock, _subtract, channel_stock),
+  `pipeline.py` (rest_machining).
 
 ### N. Tooling families (cylinder / cone / barrel consistency)
 - The SAME tool family must be used everywhere for a given run: optimizer

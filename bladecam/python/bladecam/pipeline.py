@@ -178,6 +178,52 @@ def rough_channel_trochoidal(p: Params, ae_target: float = None) -> dict:
                                        p.process.effective_feed_mm_min())
 
 
+def rest_machining(p: Params, nx: int = 44, ny: int = 44) -> dict:
+    """Stock-aware rest-machining: carry a persistent dexel (Z-map) stock of the
+    flow channel through roughing THEN finishing, so the finish pass sees only
+    the material roughing left -- not the raw block.
+
+    Roughing clears the channel bulk (layered vertical-cylinder passes); the
+    flank-finish tool then removes the rest material on the wall. Returns the
+    stock volumes at each step plus the key rest-machining comparison: how much
+    the finish removes after roughing vs finishing the RAW stock (the latter is
+    larger -- roughing already took the overlap)."""
+    from . import stock as stock_mod
+    from . import roughing
+    a, b = _blade_rails(p)
+    a2, b2 = _neighbour_walls(a, b, p.n_blades)
+    zspan = float(max(a[:, 2].max(), b[:, 2].max(),
+                      a2[:, 2].max(), b2[:, 2].max())
+                  - min(a[:, 2].min(), b[:, 2].min(),
+                        a2[:, 2].min(), b2[:, 2].min()))
+    Lf = np.linalg.norm(b - a, axis=1)
+
+    st = stock_mod.channel_stock(a, b, a2, b2, nx, ny)
+    v0 = st.volume()
+    # roughing: every layered pass point is a vertical-cylinder tool centre
+    rough = roughing.adaptive_rough(a, b, a2, b2, p.rough_ap,
+                                    p.rough_ae_frac * 2.0 * p.R,
+                                    p.process.effective_feed_mm_min())
+    rq0 = np.vstack(rough["passes"])
+    raxis = np.tile(np.array([0.0, 0.0, 1.0]), (rq0.shape[0], 1))
+    rough_removed = st.carve(rq0, raxis, p.R, zspan)
+    v_rough = st.volume()
+    # finishing: the optimised flank tool removes the rest material on the wall
+    r = compute(p)
+    finish_removed = st.carve(r["q0"], r["alpha"], p.R, Lf)
+    v_finish = st.volume()
+    # reference: finishing the RAW channel (no roughing) removes strictly more
+    raw = stock_mod.channel_stock(a, b, a2, b2, nx, ny)
+    finish_from_raw = raw.carve(r["q0"], r["alpha"], p.R, Lf)
+    return dict(stock_volume_mm3=v0, after_rough_mm3=v_rough,
+                after_finish_mm3=v_finish, rough_removed_mm3=rough_removed,
+                finish_removed_mm3=finish_removed,
+                finish_from_raw_mm3=finish_from_raw,
+                rest_fraction=(finish_removed / finish_from_raw
+                               if finish_from_raw > 0 else 0.0),
+                rest_field=st.rest_per_ray())
+
+
 def double_flank_channel(p: Params) -> dict:
     """Double-flank channel milling: one cylinder finishes both walls of the
     flow channel (this blade's wall and the adjacent blade's facing wall) in a

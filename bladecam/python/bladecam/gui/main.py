@@ -94,6 +94,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(opm, "Double-flank channel", self.show_double_flank)
         self._act(opm, "Channel roughing (show passes)", self.show_roughing)
         self._act(opm, "Channel roughing — trochoidal", self.show_trochoidal)
+        self._act(opm, "Rest-machining (dexel stock)", self.show_rest_machining)
         self._act(opm, "Edge finishing (point-mill)", self.show_edge_finish)
         opm.addSeparator()
         self._act(opm, "Machined envelope (swept surface)", self.show_envelope)
@@ -1039,6 +1040,28 @@ class MainWindow(QtWidgets.QMainWindow):
             f"EDGE FINISH (point-mill): {ef['n_rows']} rows\n"
             f"  scallop: {ef['scallop']*1000:.1f} µm, "
             f"path {ef['path_len_mm']:.0f} mm")
+
+    def show_rest_machining(self):
+        """Stock-aware rest-machining: carry a dexel stock through roughing then
+        finishing and report how much the finish removes (the rest material) vs
+        finishing the raw stock."""
+        from ..pipeline import rest_machining
+        self.status.showMessage("rest-machining (carving stock)…")
+        rm = rest_machining(self.model.build_params())
+        QtWidgets.QMessageBox.information(
+            self, "Rest-machining (dexel stock)",
+            f"Channel stock: {rm['stock_volume_mm3']:.0f} mm³\n\n"
+            f"After roughing: {rm['after_rough_mm3']:.0f} mm³  "
+            f"(removed {rm['rough_removed_mm3']:.0f} mm³)\n"
+            f"After finishing: {rm['after_finish_mm3']:.0f} mm³  "
+            f"(removed {rm['finish_removed_mm3']:.0f} mm³)\n\n"
+            f"REST MATERIAL the finish cuts: {rm['finish_removed_mm3']:.0f} mm³\n"
+            f"vs finishing RAW stock: {rm['finish_from_raw_mm3']:.0f} mm³\n"
+            f"rest fraction: {rm['rest_fraction']*100:.0f}%  "
+            f"(roughing pre-cleared the rest)")
+        self.status.showMessage(
+            f"rest-machining: finish cuts {rm['finish_removed_mm3']:.0f} mm³ "
+            f"({rm['rest_fraction']*100:.0f}% of raw)")
 
     def import_cad(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
