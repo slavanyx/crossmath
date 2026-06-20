@@ -870,6 +870,10 @@ class MainWindow(QtWidgets.QMainWindow):
              ("—" if r.get("mesh_clearance", float("inf")) == float("inf")
               else f"{r.get('mesh_clearance'):.2f} mm")),
             ("collision-free", str(r["collision_free"])),
+            ("avoidance (rulings tilted)",
+             f"{r.get('avoidance_adjusted', 0)}"
+             + (f", {len(r['avoidance_infeasible'])} infeasible"
+                if r.get('avoidance_infeasible') else "")),
             ("machine", r.get("machine_name", "—")),
             ("reachable", _reach_str(r)),
             ("cut force (peak)", f"{r.get('cut_force_peak_N', 0.0):.0f} N"),

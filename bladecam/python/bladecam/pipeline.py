@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 import numpy as np
 
-from . import core, blade, optimize
+from . import core, blade, optimize, avoid
 from .process import MachineLimits, ProcessParams
 from .machine import (reachability, table_mesh,
                       tool_branch_capsules, structure_capsules)
@@ -50,6 +50,8 @@ class Params:
     swept_weight: float = 0.3   # global-optimizer swept-overcut penalty
     swept_window: int = 8       # neighbour index half-width for swept penalty
     collision_substeps: int = 2  # swept-motion sampling between stations
+    avoid_collisions: bool = True  # collision-AWARE positioning (tilt to clear)
+    avoid_margin: float = 0.5    # target clearance (mm) the avoidance restores
     fixture_z: float = None      # fixture/table plane z (None = no plane check)
     mount_clearance: float = 30.0  # blade base -> machine table top (mm)
     root_fillet_r: float = 0.0   # hub-fillet trim offset (mm); 0 = no trim
@@ -328,6 +330,64 @@ def compute(p: Params) -> dict:
     eff_Rb = p.barrel_R if p.strategy == "global" else 0.0
     nv_grid = p.viz_grid
     surf = blade.surface(a, b, nv_grid)
+
+    # --- collision geometry (built ONCE here; used by avoidance below AND the
+    # swept collision pass later) ---
+    pitch = 2.0 * np.pi / p.n_blades
+    # neighbour flanks as exact unsigned meshes (#2); modest grid keeps the chord
+    # error far below the cut tolerance
+    ui = np.unique(np.linspace(0, nu - 1, min(nu, 18)).round().astype(int))
+    vi = np.unique(np.linspace(0, nv_grid - 1, min(nv_grid, 16)).round().astype(int))
+    ngrid = surf[np.ix_(ui, vi)]
+    obstacle_tris = np.vstack([core.tris_from_grid(ngrid @ _rotz(pitch).T),
+                               core.tris_from_grid(ngrid @ _rotz(-pitch).T)])
+    structural = hasattr(p.machine, "table_radius")
+    mount_z = float(min(a[:, 2].min(), b[:, 2].min())) - p.mount_clearance
+    if structural:                                   # the table as an exact mesh
+        obstacle_tris = np.vstack([obstacle_tris, table_mesh(p.machine, mount_z)])
+    hbase = pr.flute_len + pr.holder_gap
+    sbase = hbase + pr.holder_len + pr.spindle_gap
+    seg_R = np.array([p.R, pr.holder_dia*0.5, pr.spindle_dia*0.5])
+    seg_lo = np.array([0.0, hbase, sbase])
+    seg_hi = np.array([pr.flute_len, hbase + pr.holder_len, sbase + pr.spindle_len])
+    m_hd = getattr(p.machine, "spindle_dia", 0.0)    # machine head/housing body
+    if m_hd > 0.0:
+        h_lo = sbase + pr.spindle_len
+        seg_R = np.append(seg_R, 0.5 * m_hd)
+        seg_lo = np.append(seg_lo, h_lo)
+        seg_hi = np.append(seg_hi, h_lo + p.machine.spindle_len)
+    plane_pt = None if p.fixture_z is None else np.array([0.0, 0.0, p.fixture_z])
+    plane_n = np.array([0.0, 0.0, 1.0])
+    nscan_c = max(4, 2 * p.collision_substeps)
+    reach = float(seg_hi.max() + seg_R.max())
+    kind = p.machine.kind
+    # hub/shroud endwalls (#3), sampled below the holder radius so nothing threads
+    hgap = max(2.0, 0.8 * pr.holder_dia * 0.5)
+    r_out = float(np.hypot(b[:, 0], b[:, 1]).max())
+    nazi = max(16, int(np.ceil(2.0 * np.pi * r_out / hgap)))
+    rail_len = float(np.linalg.norm(np.diff(a, axis=0), axis=1).sum())
+    stride = max(1, nu // max(2, int(np.ceil(rail_len / hgap))))
+    aw, bw = a[::stride], b[::stride]
+    endwall = np.vstack([np.vstack([aw @ _rotz(2.0*np.pi*k/nazi).T,
+                                    bw @ _rotz(2.0*np.pi*k/nazi).T])
+                         for k in range(nazi)])
+    contact = 0.5 * (a + b)
+
+    # --- advanced collision AVOIDANCE: the optimiser fixed the swept-optimal axes
+    # but knows nothing about clearance, so on tight geometry it can tilt the tool
+    # into a neighbour/hub/head. Tilt those rulings to restore clearance, trading
+    # the least swept-fit error and keeping the motion smooth -- collision-aware
+    # positioning (we own the path, so we avoid IN it, not by a reactive patch).
+    if p.avoid_collisions:
+        Lflute_av = np.linalg.norm(b - a, axis=1)
+        alpha, avoid_report = avoid.collision_aware_axes(
+            q0, alpha, surf, p.R, eff_gamma, seg_R, seg_lo, seg_hi,
+            obstacle_tris, surf.reshape(-1, 3), hbase, pr.holder_len, endwall,
+            np.gradient(contact, axis=0), Lflute_av, margin=p.avoid_margin)
+    else:
+        avoid_report = dict(n_adjusted=0, residual_min_clearance=float("inf"),
+                            infeasible_rulings=[])
+
     v = np.linspace(0.0, 1.0, nv_grid)
     devfield = np.empty((nu, nv_grid))
     for i in range(nu):
@@ -338,8 +398,8 @@ def compute(p: Params) -> dict:
         else:
             devfield[i] = core.deviation_cone(q0[i], alpha[i], p.R, eff_gamma, pts)
 
-    # --- Phase 3: kinematics (contact point = mid-ruling) ---
-    contact = 0.5 * (a + b)
+    # --- Phase 3: kinematics (contact point = mid-ruling; alpha may have been
+    # adjusted by the avoidance pass above) ---
     m = core.ik_path(contact, alpha, p.pivot, kind=p.machine.kind)  # (nu,5) X,Y,Z,A,C
     m[:, 3] = np.unwrap(m[:, 3])                      # unwrap A, C for TOPP
     m[:, 4] = np.unwrap(m[:, 4])
@@ -351,63 +411,10 @@ def compute(p: Params) -> dict:
     reachable = len(axis_violations) == 0
     machine_name = getattr(p.machine, "name", "custom limits")
 
-    # --- collision: full tool ASSEMBLY (flute+holder+spindle) vs the part and
-    # machine, swept over the whole motion, plus an optional fixture/table plane.
+    # --- collision: full tool ASSEMBLY vs the part and machine, swept over the
+    # real joint-space motion against the obstacle world built above (neighbour +
+    # table mesh, hub/shroud endwalls, head body, fixture plane). ---
     flat = surf.reshape(-1, 3)
-    pitch = 2.0 * np.pi / p.n_blades
-    # NEIGHBOUR FLANKS as EXACT triangle meshes (#2): a point cloud cannot detect
-    # a tool thinner than its sample spacing threading between samples, so the
-    # neighbour blades are checked as continuous unsigned meshes (a thin flank is
-    # an OPEN sheet -- the tool crossing it drives the seg-triangle distance below
-    # the radius). A modest grid keeps the chord error far below the cut tolerance.
-    ui = np.unique(np.linspace(0, nu - 1, min(nu, 18)).round().astype(int))
-    vi = np.unique(np.linspace(0, nv_grid - 1, min(nv_grid, 16)).round().astype(int))
-    ngrid = surf[np.ix_(ui, vi)]
-    obstacle_tris = np.vstack([core.tris_from_grid(ngrid @ _rotz(pitch).T),
-                               core.tris_from_grid(ngrid @ _rotz(-pitch).T)])
-    # structural machine model: the trunnion TABLE the workpiece sits on, now an
-    # EXACT mesh (#2) appended to the unsigned obstacle mesh -- continuous, so a
-    # thin tool cannot thread between samples as it could with the point cloud.
-    structural = hasattr(p.machine, "table_radius")
-    mount_z = float(min(a[:, 2].min(), b[:, 2].min())) - p.mount_clearance
-    if structural:
-        obstacle_tris = np.vstack([obstacle_tris, table_mesh(p.machine, mount_z)])
-    # stacked assembly segments (axial extents from q0 along the tool axis)
-    hbase = pr.flute_len + pr.holder_gap
-    sbase = hbase + pr.holder_len + pr.spindle_gap
-    seg_R = np.array([p.R, pr.holder_dia*0.5, pr.spindle_dia*0.5])
-    seg_lo = np.array([0.0, hbase, sbase])
-    seg_hi = np.array([pr.flute_len, hbase + pr.holder_len, sbase + pr.spindle_len])
-    # MACHINE spindle HOUSING / head body (full-machine collision): a cylinder
-    # from the machine profile, coaxial with the tool above the holder/spindle. It
-    # tilts with the tool axis (alpha) in the part frame -- correct for table-table
-    # (the part tilts) AND head-head (the head tilts), since the tool-axis
-    # direction in the part frame is alpha either way. Closes the previously
-    # unused Machine.spindle_dia/len: the head was modelled nowhere, so a tilted
-    # head diving toward the table/part went unchecked (worst on head-head).
-    m_hd = getattr(p.machine, "spindle_dia", 0.0)
-    if m_hd > 0.0:
-        h_lo = sbase + pr.spindle_len
-        seg_R = np.append(seg_R, 0.5 * m_hd)
-        seg_lo = np.append(seg_lo, h_lo)
-        seg_hi = np.append(seg_hi, h_lo + p.machine.spindle_len)
-    plane_pt = None if p.fixture_z is None else np.array([0.0, 0.0, p.fixture_z])
-    plane_n = np.array([0.0, 0.0, 1.0])
-    nscan_c = max(4, 2 * p.collision_substeps)
-    reach = float(seg_hi.max() + seg_R.max())
-    kind = p.machine.kind
-    # hub / shroud ENDWALLS (#3): the rotating disk and outer band as surfaces of
-    # revolution of the root/tip rails, sampled just dense enough that the holder
-    # cannot thread between points (azimuthal & axial spacing < holder radius).
-    hgap = max(2.0, 0.8 * pr.holder_dia * 0.5)
-    r_out = float(np.hypot(b[:, 0], b[:, 1]).max())
-    nazi = max(16, int(np.ceil(2.0 * np.pi * r_out / hgap)))
-    rail_len = float(np.linalg.norm(np.diff(a, axis=0), axis=1).sum())
-    stride = max(1, nu // max(2, int(np.ceil(rail_len / hgap))))
-    aw, bw = a[::stride], b[::stride]
-    endwall = np.vstack([np.vstack([aw @ _rotz(2.0*np.pi*k/nazi).T,
-                                    bw @ _rotz(2.0*np.pi*k/nazi).T])
-                         for k in range(nazi)])
 
     def _obstacle_clr(dqL, daL, owL, nuL):
         """Min clearance of a (densified) pose set to the whole obstacle world:
@@ -565,6 +572,9 @@ def compute(p: Params) -> dict:
         hub_clearance=hub_clearance,
         approach_clearance=approach_clearance, retract_clearance=retract_clearance,
         index_clearance=index_clearance,
+        avoidance_adjusted=avoid_report["n_adjusted"],
+        avoidance_residual_clearance=avoid_report["residual_min_clearance"],
+        avoidance_infeasible=avoid_report["infeasible_rulings"],
         reachable=reachable, axis_violations=axis_violations,
         machine_name=machine_name, structural_check=structural,
         cut_force_peak_N=forces["F_peak"], cut_force_mean_N=forces["F_mean"],

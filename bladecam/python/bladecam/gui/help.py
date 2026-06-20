@@ -127,6 +127,10 @@ METRIC_HELP = {
     "fixture/body clearance": "Tool assembly vs the imported fixture/machine "
         "triangle mesh. '—' if no fixture is loaded.",
     "collision-free": "True only if every clearance above is positive.",
+    "avoidance (rulings tilted)": "Collision-aware positioning: how many rulings "
+        "the optimiser tilted to clear a collision (within the swept-error "
+        "budget), and how many remain infeasible (no tilt clears them -- the "
+        "channel is too tight or the flank inflected; use a smaller/barrel tool).",
     "machine": "The active machine profile driving limits + reachability.",
     "reachable": "Whether the toolpath fits the machine's travel/rotary envelope "
         "(shows the offending axis + excess if not).",
