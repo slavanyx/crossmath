@@ -11,7 +11,7 @@ import numpy as np
 
 from . import core, blade, optimize
 from .process import MachineLimits, ProcessParams
-from .machine import (reachability, structure_obstacles,
+from .machine import (reachability, table_mesh,
                       tool_branch_capsules, structure_capsules)
 
 
@@ -363,14 +363,15 @@ def compute(p: Params) -> dict:
     ui = np.unique(np.linspace(0, nu - 1, min(nu, 18)).round().astype(int))
     vi = np.unique(np.linspace(0, nv_grid - 1, min(nv_grid, 16)).round().astype(int))
     ngrid = surf[np.ix_(ui, vi)]
-    neighbour_tris = np.vstack([core.tris_from_grid(ngrid @ _rotz(pitch).T),
-                                core.tris_from_grid(ngrid @ _rotz(-pitch).T)])
-    # structural machine model: the trunnion TABLE as a static obstacle cloud (in
-    # part frame it moves with the part). A big flat solid, sampled as points.
+    obstacle_tris = np.vstack([core.tris_from_grid(ngrid @ _rotz(pitch).T),
+                               core.tris_from_grid(ngrid @ _rotz(-pitch).T)])
+    # structural machine model: the trunnion TABLE the workpiece sits on, now an
+    # EXACT mesh (#2) appended to the unsigned obstacle mesh -- continuous, so a
+    # thin tool cannot thread between samples as it could with the point cloud.
     structural = hasattr(p.machine, "table_radius")
     mount_z = float(min(a[:, 2].min(), b[:, 2].min())) - p.mount_clearance
-    table_obs = (structure_obstacles(p.machine, mount_z) if structural
-                 else np.zeros((0, 3)))
+    if structural:
+        obstacle_tris = np.vstack([obstacle_tris, table_mesh(p.machine, mount_z)])
     # stacked assembly segments (axial extents from q0 along the tool axis)
     hbase = pr.flute_len + pr.holder_gap
     sbase = hbase + pr.holder_len + pr.spindle_gap
@@ -397,18 +398,18 @@ def compute(p: Params) -> dict:
 
     def _obstacle_clr(dqL, daL, owL, nuL):
         """Min clearance of a (densified) pose set to the whole obstacle world:
-        neighbour meshes (full assembly, unsigned), table cloud + fixture plane
-        (full assembly), and hub/shroud endwalls (holder+spindle only). Returns a
-        per-original-segment array (length nuL) so the worst can be taken."""
+        the unsigned obstacle MESH (neighbour flanks + table, full assembly), the
+        fixture plane (full assembly), and hub/shroud endwalls (holder+spindle
+        only). Returns a per-original-segment array (length nuL)."""
         capsL = tool_branch_capsules(dqL, daL, seg_R, seg_lo, seg_hi)
         c = core.reduce_to_segments(
-            core.mesh_clearance(capsL, neighbour_tris, nscan=nscan_c,
+            core.mesh_clearance(capsL, obstacle_tris, nscan=nscan_c,
                                 signed=False), owL, nuL)
-        if table_obs.shape[0] or plane_pt is not None:
+        if plane_pt is not None:
             c = np.minimum(c, core.reduce_to_segments(
-                core.assembly_clearance(dqL, daL, seg_R, seg_lo, seg_hi, table_obs,
-                                        plane_pt=plane_pt, plane_n=plane_n,
-                                        nscan=nscan_c), owL, nuL))
+                core.assembly_clearance(dqL, daL, seg_R, seg_lo, seg_hi,
+                                        np.zeros((0, 3)), plane_pt=plane_pt,
+                                        plane_n=plane_n, nscan=nscan_c), owL, nuL))
         c = np.minimum(c, core.reduce_to_segments(
             core.assembly_clearance(dqL, daL, seg_R[1:], seg_lo[1:], seg_hi[1:],
                                     endwall, nscan=nscan_c), owL, nuL))
@@ -458,6 +459,26 @@ def compute(p: Params) -> dict:
     approach_clearance = _lead_clr(q0[0], alpha[0])
     retract_clearance = _lead_clr(q0[-1], alpha[-1])
     min_clear = min(min_clear, approach_clearance, retract_clearance)
+    # PASS-LINKING / blade-index move (#1): on a multi-blade wheel the machine
+    # retracts off the end of one blade, indexes the C table by one pitch to the
+    # next, and re-approaches. By rotational symmetry every blade's lead-in/out is
+    # the one already checked above; the NEW motion is the index itself -- a joint
+    # move from the retracted end of this blade to the retracted (pitch-rotated)
+    # start of the next, swept against the same obstacle world. The approach/
+    # retract are along the axis; the index sweeps the tool across a passage.
+    index_clearance = float("inf")
+    if p.n_blades > 1:
+        Rp = _rotz(pitch)
+        q_end = q0[-1] + Dret * alpha[-1]
+        q_nxt = (q0[0] + Dret * alpha[0]) @ Rp.T          # next blade = +pitch
+        ql = np.array([q_end, q_nxt])
+        al = np.array([alpha[-1], alpha[0] @ Rp.T])
+        ml = core.ik_path(ql, al, p.pivot, kind=kind)
+        ml[:, 3] = np.unwrap(ml[:, 3]); ml[:, 4] = np.unwrap(ml[:, 4])
+        _, dqi, dai, owi = core.densify_fk(ml, p.pivot, kind, reach)
+        ci, _ = _obstacle_clr(dqi, dai, owi, 2)
+        index_clearance = float(ci.min())
+        min_clear = min(min_clear, index_clearance)
     # structural machine model: tool-assembly capsules vs the trunnion cradle yoke
     # + machine column, on the DENSE FK poses + dense machine joints.
     link_clearance = float("inf")
@@ -521,6 +542,7 @@ def compute(p: Params) -> dict:
         link_clearance=link_clearance, mesh_clearance=mesh_clear,
         hub_clearance=hub_clearance,
         approach_clearance=approach_clearance, retract_clearance=retract_clearance,
+        index_clearance=index_clearance,
         reachable=reachable, axis_violations=axis_violations,
         machine_name=machine_name, structural_check=structural,
         cut_force_peak_N=forces["F_peak"], cut_force_mean_N=forces["F_mean"],

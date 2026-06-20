@@ -236,6 +236,46 @@ def main():
     except Exception as e:
         check(False, "G6: approach/retract clearance", f"({e})")
 
+    # ---- G7: the blade-INDEX (pass-linking) move is collision-checked ---------
+    try:
+        from bladecam.pipeline import compute, Params
+        rb = compute(Params(strategy="global", nu=24, n_blades=11))
+        rs = compute(Params(strategy="global", nu=24, n_blades=1))
+        check("index_clearance" in rb and np.isfinite(rb["index_clearance"]),
+              "G7: multi-blade wheel reports a finite index-move clearance",
+              f"({rb.get('index_clearance', float('nan')):.1f} mm)")
+        check(rs["index_clearance"] == float("inf"),
+              "G7: a single blade has no index move (inf)")
+    except Exception as e:
+        check(False, "G7: index-move clearance", f"({e})")
+
+    # ---- G8: the table is an EXACT mesh, not a threadable point cloud ----------
+    # A thin flute dips just below the table top between the coarse point-cloud
+    # samples: the point cloud clears it, the continuous table mesh catches it.
+    try:
+        from bladecam import machine as _ml
+        from bladecam.machine import structure_obstacles, table_mesh
+        mc = _ml.get_machine("Generic 5-axis trunnion")
+        mz = 0.0
+        tpts = structure_obstacles(mc, mz)                 # coarse point cloud
+        ttris = table_mesh(mc, mz)                         # exact mesh
+        # flute tip 2 mm below the table top, at a point between cloud samples
+        rr = 0.55 * mc.table_radius
+        tip = np.array([rr * np.cos(0.13), rr * np.sin(0.13), -2.0])
+        capt = np.zeros((2, 1, 7))
+        capt[0, 0] = [tip[0], tip[1], -2.0, tip[0], tip[1], 18.0, 3.0]
+        capt[1, 0] = capt[0, 0]
+        c_pts = core.assembly_clearance(
+            np.array([[tip[0], tip[1], -2.0], [tip[0], tip[1], -2.0]]),
+            np.array([[0.0, 0, 1.0], [0.0, 0, 1.0]]), np.array([3.0]),
+            np.array([0.0]), np.array([20.0]), tpts, nscan=4).min()
+        c_mesh = core.mesh_clearance(capt, ttris, nscan=4, signed=False).min()
+        check(c_pts > 0 and c_mesh < 0,
+              "G8 gap+fix: table point cloud misses the dip, the mesh catches it",
+              f"(points {c_pts:.1f} > 0, mesh {c_mesh:.1f} < 0)")
+    except Exception as e:
+        check(False, "G8: table mesh", f"({e})")
+
     if FAILED:
         print(f"\nGAUNTLET GAPS (expected until fixed): {FAILED}")
         sys.exit(1)
