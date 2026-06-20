@@ -43,6 +43,7 @@ class Params:
     mount_clearance: float = 30.0  # blade base -> machine table top (mm)
     root_fillet_r: float = 0.0   # hub-fillet trim offset (mm); 0 = no trim
     rails: tuple = None         # optional (a, b) override for external blades
+    fixture_mesh: tuple = None  # optional (verts, faces) fixture/machine-body mesh
     # operation parameters (were hardcoded call-site defaults; now config)
     rough_ap: float = 3.0          # roughing axial depth (mm)
     rough_ae_frac: float = 0.4     # roughing stepover as fraction of tool dia
@@ -329,6 +330,8 @@ def compute(p: Params) -> dict:
     # convention). Catches self-collisions the part-frame table/neighbour checks
     # miss -- e.g. the holder swinging into a trunnion post at a steep tilt.
     link_clearance = float("inf")
+    mesh_clear = float("inf")
+    tool_caps = None
     if structural and getattr(p.machine, "cradle_span", 0.0) >= 0.0:
         struct_caps = structure_capsules(p.machine, m, p.pivot, mount_z)
         if struct_caps.shape[1] > 0:
@@ -337,6 +340,17 @@ def compute(p: Params) -> dict:
                 tool_caps, struct_caps, nscan=max(4, 2 * p.collision_substeps))
             link_clearance = float(link_clr.min())
             min_clear = min(min_clear, link_clearance)
+    # mesh-accurate fixture / machine-body collision: the tool assembly vs an
+    # imported triangle mesh (clamps, fixture, casting) in the part frame -- the
+    # sub-mm check the capsule links approximate.
+    if p.fixture_mesh is not None:
+        if tool_caps is None:
+            tool_caps = tool_branch_capsules(q0, alpha, seg_R, seg_lo, seg_hi)
+        tris = core.mesh_from_faces(p.fixture_mesh[0], p.fixture_mesh[1])
+        mclr = core.mesh_clearance(tool_caps, tris,
+                                   nscan=max(4, 2 * p.collision_substeps))
+        mesh_clear = float(mclr.min())
+        min_clear = min(min_clear, mesh_clear)
     collision_free = bool(min_clear > 0.0)
     gouge_max = float(max(0.0, -devfield.min()))   # per-station depth past the design surface
     # swept-envelope overcut: cross-station interference the per-station model
@@ -375,7 +389,7 @@ def compute(p: Params) -> dict:
         machine_path=m, aprof=aprof, cycle_time_s=cycle_s,
         min_clearance=min_clear, collision_free=collision_free,
         holder_clearance=holder_min, assembly_clearance=float(clr.min()),
-        link_clearance=link_clearance,
+        link_clearance=link_clearance, mesh_clearance=mesh_clear,
         reachable=reachable, axis_violations=axis_violations,
         machine_name=machine_name, structural_check=structural,
         cut_force_peak_N=forces["F_peak"], cut_force_mean_N=forces["F_mean"],

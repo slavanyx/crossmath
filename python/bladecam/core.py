@@ -80,6 +80,7 @@ _lib.bc_assembly_clearance.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL, _DBL,
                                        c_int, _DBL, c_int, _DBL, _DBL,
                                        c_int, c_int, _DBL]
 _lib.bc_struct_clearance.argtypes = [_DBL, c_int, _DBL, c_int, c_int, c_int, _DBL]
+_lib.bc_mesh_clearance.argtypes = [_DBL, c_int, _DBL, c_int, c_int, c_int, _DBL]
 _lib.bc_ik_path.argtypes = [c_int, _DBL, _DBL, c_int, _DBL, _DBL]
 _lib.bc_topp.argtypes = [_DBL, c_int, c_int, _DBL, _DBL, c_double, c_double,
                          _DBL, _DBL]
@@ -367,6 +368,29 @@ def dexel_carve(q0, alpha, R, Lf, orig, dir, seg0):
                         _ptr(orig), _ptr(dir), _ptr(seg0), c_int(nray),
                         _ptr(removed), _ptr(first_cut))
     return removed, first_cut
+
+
+def mesh_clearance(acaps, tris, nscan=4):
+    """Swept clearance of the tool-assembly capsule set `acaps` (nu, na, 7) to a
+    static triangle mesh `tris` (ntri, 9) where each row is [ax,ay,az, bx,by,bz,
+    cx,cy,cz]. Returns clr (nu,); clr[i] covers segment [i,i+1], <0 = collision.
+    Use mesh_from_faces() to build `tris` from (verts, faces)."""
+    acaps = _c(acaps); tris = _c(tris)
+    nu, na = acaps.shape[0], acaps.shape[1]
+    ntri = tris.shape[0]
+    clr = np.empty(nu, dtype=np.float64)
+    _lib.bc_mesh_clearance(_ptr(acaps), c_int(na), _ptr(tris), c_int(ntri),
+                           c_int(nu), c_int(nscan), _ptr(clr))
+    return clr
+
+
+def mesh_from_faces(verts, faces):
+    """Flatten a (verts, faces) triangle mesh into the (ntri, 9) layout
+    mesh_clearance expects (the three vertices of each triangle, in order)."""
+    verts = np.ascontiguousarray(verts, dtype=np.float64)
+    faces = np.asarray(faces, dtype=np.int64)
+    tri = verts[faces]                                   # (ntri, 3, 3)
+    return np.ascontiguousarray(tri.reshape(tri.shape[0], 9))
 
 
 def dexel_removed_intervals(q0, alpha, R, Lf, orig, dir, maxseg=32):
