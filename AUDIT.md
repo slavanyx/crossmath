@@ -486,14 +486,22 @@ RESOLVED (verify they haven't regressed; don't re-report as new):
 - Lead-in / lead-out collision (approach & retract): the plunge to the first cut
   and retract from the last are now swept along the tool axis against the full
   obstacle world (approach_clearance / retract_clearance). Gauntlet G6.
+- PASS-LINKING / blade-index move: on a multi-blade wheel the retract-index-
+  reapproach between consecutive blades is now swept (index_clearance); every
+  blade's lead-in/out is the checked one by rotational symmetry. Gauntlet G7.
+- Table as an EXACT mesh (#2): the trunnion table is a continuous fan-disc + side
+  mesh appended to the unsigned obstacle mesh, not the structure_obstacles point
+  cloud (which a thin tool could thread between, ~78 mm spacing at the rim).
+  Gauntlet G8 (point cloud misses a dip the mesh catches).
 
 OPEN (real residual limitations — state honestly, improve if in scope):
 - TOPP at an exact velocity cusp: bounded but ~1.75× amax at the singular grid
   station (discretization).
-- PASS-LINKING moves between blades/passes are still not checked (only the cut
-  path + its own lead-in/out are). The table point cloud and the imported-fixture
-  closed mesh remain sampled/closed-solid; only the neighbour FLANKS are exact
-  unsigned meshes.
+- The blade-index move is modelled as ONE joint-linear G0 (retract-end ->
+  reapproach-start); a real post may break it into retract-plane / rapid / plunge
+  sub-moves. The imported-fixture mesh is checked as a closed solid (signed); the
+  neighbour flanks + table are exact unsigned meshes; the hub/shroud endwalls
+  remain point clouds (spacing bounded < holder radius).
 - Structural collision is tool-assembly + table/fixture/hub/shroud, NOT a full
   kinematic machine model (no ram/column/spindle-housing link geometry); table
   frame assumes table-table A-C (wrong for head-head kind=1 — verify or guard).

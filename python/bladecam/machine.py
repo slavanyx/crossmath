@@ -121,6 +121,28 @@ def structure_obstacles(m: "Machine", mount_z: float, depth: float = 80.0,
     return np.ascontiguousarray(np.vstack(pts))
 
 
+def table_mesh(m: "Machine", mount_z: float, depth: float = 80.0,
+               nazi: int = 48) -> np.ndarray:
+    """EXACT triangle mesh of the trunnion TABLE in the part frame (the disc the
+    workpiece sits on): a fan-triangulated top face at z=mount_z plus the
+    cylindrical side wall down by `depth`. Returns (ntri, 9). Continuous (no
+    sampling gap), so a thin tool cannot thread between samples the way the
+    structure_obstacles point cloud allowed. Checked UNSIGNED (the top+side are
+    the faces the tool must not cross; it always approaches from above)."""
+    R = m.table_radius
+    th = np.linspace(0.0, 2.0 * np.pi, nazi, endpoint=False)
+    rim = np.column_stack([R * np.cos(th), R * np.sin(th), np.full(nazi, mount_z)])
+    rim_lo = rim - np.array([0.0, 0.0, depth])
+    c = np.array([0.0, 0.0, mount_z])
+    tris = []
+    for k in range(nazi):
+        kn = (k + 1) % nazi
+        tris.append(np.concatenate([c, rim[k], rim[kn]]))               # top fan
+        tris.append(np.concatenate([rim[k], rim_lo[k], rim_lo[kn]]))    # side
+        tris.append(np.concatenate([rim[k], rim_lo[kn], rim[kn]]))
+    return np.ascontiguousarray(np.array(tris))
+
+
 # --- structural kinematic-link collision (capsule model) ---------------------
 # Rotation matrices MATCHING kinematics.f90's convention (world->part = Rz(C)Rx(A)
 # about the pivot), so the structure is placed in the part frame exactly as the

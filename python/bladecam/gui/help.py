@@ -119,6 +119,9 @@ METRIC_HELP = {
     "approach / retract clearance": "Clearance of the lead-in (plunge to the first "
         "cut) and lead-out (retract from the last) moves, swept along the tool "
         "axis against the same obstacles — the non-cutting moves crashes hide in.",
+    "blade-index clearance": "Clearance of the pass-linking move on a multi-blade "
+        "wheel: retract off one blade, index the table by one pitch, re-approach "
+        "the next. '—' for a single blade (no index).",
     "structural-link clearance": "Tool assembly vs the trunnion cradle posts and "
         "machine column (kinematic links). '—' if the machine has none.",
     "fixture/body clearance": "Tool assembly vs the imported fixture/machine "

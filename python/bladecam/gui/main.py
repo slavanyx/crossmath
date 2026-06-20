@@ -860,6 +860,9 @@ class MainWindow(QtWidgets.QMainWindow):
             ("approach / retract clearance",
              f"{r.get('approach_clearance', float('nan')):.2f} / "
              f"{r.get('retract_clearance', float('nan')):.2f} mm"),
+            ("blade-index clearance",
+             ("—" if r.get("index_clearance", float("inf")) == float("inf")
+              else f"{r.get('index_clearance'):.2f} mm")),
             ("structural-link clearance",
              ("—" if r.get("link_clearance", float("inf")) == float("inf")
               else f"{r.get('link_clearance'):.2f} mm")),
