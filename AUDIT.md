@@ -127,8 +127,16 @@ For each angle: the question, the techniques, and BladeCAM-specific targets.
   proxy? Colour maps keyed to the right field with sane ranges (far-field
   clearance shouldn't swamp the overcut scale). Workflow stages show the right
   3D artefacts and the matching analysis tab. No work on the UI thread.
-- Targets: `gui/main.py` (`_fill_results`, `_draw_3d`, `_render_scene`),
-  `gui/model.py`, `gui/charts.py`, `workflow.py`.
+- **Project files (`.bladecam`):** `to_project`/`load_project` snapshot the
+  COMPLETE editable state (live values, strategy, full machine + post configs,
+  embedded CAD rails / FRF) — self-contained, so a reopened job rebuilds an
+  identical `build_params()`, computes, and posts the IDENTICAL program without
+  any preset library or the original CAD. Oracles: full round-trip equality,
+  file format guard, parametric (no-CAD) rails=None case. Mutation: drop
+  rails / ignore values / skip the format guard — killed.
+- Targets: `gui/main.py` (`_fill_results`, `_draw_3d`, `_render_scene`,
+  `save_project`/`open_project`), `gui/model.py` (`to_project`/`load_project`),
+  `gui/charts.py`, `workflow.py`.
 
 ### I. Performance & complexity
 - Hotspots (optimizer is ~96% — verify), big-O of new routines (golden-section ×
