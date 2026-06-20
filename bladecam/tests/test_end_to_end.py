@@ -93,11 +93,14 @@ def main():
     total_cycle = 0.0
     for i, (a, b) in enumerate(rails):
         r = compute(Params(strategy="global", rails=(a, b), n_blades=7))
-        ok = (np.all(np.isfinite(r["dev"])) and r["dev"].max() < 0.2 and
+        # the default minimises the swept-envelope error (the real machined
+        # deviation); assert on that, not the per-ruling residual `dev`.
+        ok = (np.all(np.isfinite(r["dev"])) and r["swept_overcut"] < 0.15 and
               np.all(np.isfinite(r["machine_path"])) and r["cycle_time_s"] > 0 and
               np.all(np.isfinite(r["move_times_s"])))
         check(ok, f"blade {i}: optimise+IK+TOPP valid",
-              f"(dev {r['dev'].max()*1000:.1f} um, cycle {r['cycle_time_s']:.2f} s)")
+              f"(swept {r['swept_overcut']*1000:.1f} um, dev {r['dev'].max()*1000:.1f} um, "
+              f"cycle {r['cycle_time_s']:.2f} s)")
         g = postproc.to_gcode(r["machine_path"], r["feed_cap_mm_min"],
                               move_times=r["move_times_s"])
         check("G93" in g and g.strip().endswith("M30"), f"blade {i}: valid G-code")

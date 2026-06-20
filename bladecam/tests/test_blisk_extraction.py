@@ -92,9 +92,17 @@ def main():
           and oa[0, 2] <= oa[-1, 2], "orient_hub_first normalises a swapped/reversed pair")
 
     # each drives the optimiser
+    # the multi-objective default minimises the SWEPT-envelope error (the real
+    # machined deviation). "Optimises well" means it slashes that envelope error
+    # versus the per-ruling-only fit -- an absolute threshold would just measure
+    # how hard the part is, not how well the optimiser did (principle #5: check
+    # the metric you optimise, not the per-ruling proxy `dev`).
+    base = compute(Params(strategy="global", rails=rails[0], nu=30,
+                          swept_weight=0.0, mu=1.0))
     r = compute(Params(strategy="global", rails=rails[0], nu=30))
-    check(r["dev"].max() < 0.1, "extracted blisk blade optimises well",
-          f"({r['dev'].max()*1000:.1f} um)")
+    check(r["swept_overcut"] < 0.4 * base["swept_overcut"],
+          "extracted blisk blade machines far better than the per-ruling fit",
+          f"(swept {r['swept_overcut']*1000:.1f} vs {base['swept_overcut']*1000:.1f} um)")
 
     if FAILED:
         print(f"\nFAILED: {FAILED}")
