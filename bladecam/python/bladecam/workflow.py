@@ -50,7 +50,7 @@ STAGE_ANIMATE = {
 STAGE_CHART = {
     "geometry":     "Machinability",   # delta / machinability index vs station
     "positioning":  "Deviation",       # per-strategy flank deviation
-    "kinematics":   "Feed",            # realised speed-along-path of the motion
+    "kinematics":   "Kinematics",      # A/C rotary orientation along the path
     "feed":         "Feed",            # the time-optimal feed schedule itself
     "verification": "Chatter",         # process-stability (chatter) check
 }

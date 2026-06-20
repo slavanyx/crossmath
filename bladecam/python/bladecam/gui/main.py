@@ -216,7 +216,8 @@ class MainWindow(QtWidgets.QMainWindow):
         dock = QtWidgets.QDockWidget("Analysis", self)
         self.tabs = QtWidgets.QTabWidget()
         self.canvases = {}
-        for name in ("Deviation", "Machinability", "Feed", "Compare", "Chatter"):
+        for name in ("Deviation", "Machinability", "Kinematics", "Feed",
+                     "Compare", "Chatter"):
             from matplotlib.figure import Figure
             c = FigureCanvasQTAgg(Figure(figsize=(5, 3)))
             self.canvases[name] = c
@@ -575,13 +576,37 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage_lbl.setText(f"  {scene['title']}  ")
         self._render_scene(scene)
         self._fill_stage_metrics(scene)
-        # bring the analysis tab most relevant to this stage forward
+        # (re)draw the analysis chart bound to this stage from the live result,
+        # with the current-station cursor, and bring it forward
         chart = workflow.STAGE_CHART.get(scene["key"])
+        self._bind_stage_chart(chart, self.anim_slider.value())
         if chart in self.canvases:
             self.tabs.setCurrentWidget(self.canvases[chart])
         # show the cutter on the staged scene so Play sweeps it through this step
         if workflow.STAGE_ANIMATE.get(scene["key"]):
             self._show_tool_at(self.anim_slider.value())
+
+    def _bind_stage_chart(self, chart, station):
+        """Redraw the stage's analysis chart from the live result with the
+        current-station cursor, so each Preview stage drives its matching chart
+        and scrubbing the animation moves the cursor along it."""
+        r = self.last
+        if not r or chart not in self.canvases:
+            return
+        mark = int(np.clip(station, 0, r["q0"].shape[0] - 1))
+        if chart == "Machinability":
+            self._update_chart("Machinability", charts.machinability_chart,
+                               r["delta"], r["dev"], mark=mark)
+        elif chart == "Deviation":
+            self._update_chart("Deviation", charts.deviation_chart,
+                               {self.model.strategy: r["dev"]}, mark=mark)
+        elif chart == "Kinematics":
+            self._update_chart("Kinematics", charts.kinematics_chart,
+                               r["machine_path"], mark=mark)
+        elif chart == "Feed":
+            self._update_chart("Feed", charts.feed_chart,
+                               r["seglen"], r["aprof"], mark=mark)
+        # Chatter is independent of station; leave its standing render
 
     def _render_scene(self, scene):
         """Translate a renderer-agnostic workflow scene into PyVista actors."""
@@ -676,6 +701,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plotter.add_mesh(cutter(i), color="#d4af37", opacity=0.6, name="tool")
         self.plotter.add_mesh(pv.Sphere(radius=R*0.18, center=r["contact"][i]),
                               color="red", name="contact")
+        # in a Preview stage, move the bound chart's station cursor with the scrub
+        if self._stage_idx is not None:
+            chart = workflow.STAGE_CHART.get(workflow.STAGE_KEYS[self._stage_idx])
+            self._bind_stage_chart(chart, i)
 
         # interactive dexel material-removal simulation: as the slider advances,
         # show the swept tool volume carved so far and the dexel-measured removed
@@ -806,10 +835,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_chatter()
         self.status.showMessage(f"loaded measured FRF: {fn}")
 
-    def _update_chart(self, tab, fn, *args):
+    def _update_chart(self, tab, fn, *args, **kwargs):
         c = self.canvases[tab]
         c.figure.clear()
-        fn(*args, fig=c.figure)
+        fn(*args, fig=c.figure, **kwargs)
         c.draw_idle()
 
     # ---- file actions -------------------------------------------------------
