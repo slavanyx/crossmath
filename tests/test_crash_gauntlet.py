@@ -276,6 +276,33 @@ def main():
     except Exception as e:
         check(False, "G8: table mesh", f"({e})")
 
+    # ---- G9: the machine spindle HEAD/housing body is modelled & checked -------
+    # A coaxial head body (Machine.spindle_dia/len) above the tool must be part of
+    # the collision assembly: on a steep config a large head dives toward the
+    # table/part and lowers the clearance; a normal head must not false-positive.
+    # Also re-verifies the head-head (kind=1) path runs clean end to end.
+    try:
+        import dataclasses
+        from bladecam.pipeline import compute as _compute, Params as _P
+        from bladecam import machine as _M
+        base = _M.get_machine("Generic 5-axis trunnion")
+        steep = dict(strategy="global", nu=24, z_span=40, twist=1.2, wrap=0.9)
+        big = _compute(_P(machine=dataclasses.replace(base, spindle_dia=260.0,
+                                                      spindle_len=500.0), **steep))
+        none = _compute(_P(machine=dataclasses.replace(base, spindle_dia=0.0),
+                           **steep))
+        check(big["min_clearance"] < none["min_clearance"] - 1.0,
+              "G9: the spindle head body is in the collision assembly",
+              f"(head {big['min_clearance']:.1f} < no-head {none['min_clearance']:.1f})")
+        nd = _compute(_P(strategy="global", nu=24))
+        check(nd["collision_free"], "G9: a normal head does not false-positive")
+        gan = _compute(_P(strategy="global", nu=24,
+                          machine=_M.get_machine("Large gantry 5-axis")))
+        check(np.all(np.isfinite(gan["machine_path"])) and gan["reachable"],
+              "G9: head-head (kind=1) machine runs clean end to end")
+    except Exception as e:
+        check(False, "G9: machine head body", f"({e})")
+
     if FAILED:
         print(f"\nGAUNTLET GAPS (expected until fixed): {FAILED}")
         sys.exit(1)
