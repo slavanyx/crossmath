@@ -103,7 +103,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # OrcaSlicer-style preset row: Machine / Tool / Strategy presets
         pb = self.addToolBar("Presets")
         self.preset_cbs = {}
-        for kind in ("machine", "tool", "strategy"):
+        for kind in ("blade", "machine", "tool", "strategy"):
             pb.addWidget(QtWidgets.QLabel(f"  {kind.title()}: "))
             cb = QtWidgets.QComboBox()
             cb.setMinimumWidth(150)

@@ -40,6 +40,9 @@ PARAM_SPEC = [
     ("n_blades",  "Blade count",            3,    40,    1,   "int",   "Geometry"),
     ("collision_substeps", "Collision substeps", 0, 8,   1,   "int",   "Setup"),
     ("mount_clearance", "Mount clearance (mm)", 0.0, 200.0, 5.0, "float", "Setup"),
+    ("pivot_x",   "Pivot X (mm)",          -500.0, 500.0, 5.0, "float", "Setup"),
+    ("pivot_y",   "Pivot Y (mm)",          -500.0, 500.0, 5.0, "float", "Setup"),
+    ("pivot_z",   "Pivot Z (mm)",          -500.0, 500.0, 5.0, "float", "Setup"),
 ]
 
 # Tool / cutting editors -- map 1:1 to ProcessParams fields (no hardcoding).
@@ -81,7 +84,8 @@ class AppModel:
 
     def __init__(self):
         d = asdict(Params())
-        self.values = {k: d[k] for (k, *_rest) in PARAM_SPEC}
+        # most editor keys mirror a Params field; a few (pivot_x/y/z) are derived
+        self.values = {k: d[k] for (k, *_rest) in PARAM_SPEC if k in d}
         self.strategy = "global"
         # tool / cutting params -> editable, 1:1 with ProcessParams fields
         td = asdict(ProcessParams())
@@ -92,6 +96,8 @@ class AppModel:
         self.values["kind"] = MachineLimits().kind
         self.values["nv"] = Params().nv
         self.values["swept_window"] = Params().swept_window
+        px, py, pz = Params().pivot
+        self.values["pivot_x"], self.values["pivot_y"], self.values["pivot_z"] = px, py, pz
         self.rails = None  # optional external (a, b)
         self.frf = None    # optional measured FRF (freq, reG, imG)
         # selected machine profile (a Machine; editable via the config editor)
@@ -101,7 +107,8 @@ class AppModel:
         self.presets = preset_lib.PresetStore()
         self.preset_names = {"machine": self.machine_name,
                              "tool": "12 mm 4FL carbide",
-                             "strategy": "Flank finish (global)"}
+                             "strategy": "Flank finish (global)",
+                             "blade": "Default impeller blade"}
 
     def select_machine(self, name):
         """Switch to a default machine profile (resets any edits)."""
@@ -127,6 +134,10 @@ class AppModel:
                     self.strategy = val
                 elif k in self.values:
                     self.values[k] = val
+        elif kind == "blade":
+            for k in preset_lib.BLADE_FIELDS:
+                if k in d:
+                    self.values[k] = d[k]
         self.preset_names[kind] = name
 
     def capture_preset(self, kind) -> dict:
@@ -141,6 +152,8 @@ class AppModel:
             for k in preset_lib.STRATEGY_FIELDS:
                 out[k] = self.strategy if k == "strategy" else v[k]
             return out
+        if kind == "blade":
+            return {k: self.values[k] for k in preset_lib.BLADE_FIELDS}
         raise ValueError(kind)
 
     def save_preset(self, kind, name) -> str:
@@ -188,6 +201,7 @@ class AppModel:
             swept_weight=v["swept_weight"], swept_window=int(v["swept_window"]),
             collision_substeps=int(v["collision_substeps"]),
             mount_clearance=v["mount_clearance"],
+            pivot=(v["pivot_x"], v["pivot_y"], v["pivot_z"]),
             # the selected machine profile drives reachability + limits; the
             # v_rot/kind editors fine-tune the active profile
             machine=self._live_machine(),
