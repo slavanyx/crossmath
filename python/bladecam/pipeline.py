@@ -466,17 +466,26 @@ def compute(p: Params) -> dict:
     # move from the retracted end of this blade to the retracted (pitch-rotated)
     # start of the next, swept against the same obstacle world. The approach/
     # retract are along the axis; the index sweeps the tool across a passage.
+    # routed via a CLEARANCE PLANE above the wheel (the standard safe sequence a
+    # post emits): lift the retracted tool to clear_z, traverse + index C at that
+    # height, then descend to the next blade's retracted start (its lead-in is the
+    # one already checked, by symmetry). Modelling the lift/traverse/descend
+    # rather than one diagonal removes the pessimism of cutting the corner.
     index_clearance = float("inf")
     if p.n_blades > 1:
         Rp = _rotz(pitch)
-        q_end = q0[-1] + Dret * alpha[-1]
-        q_nxt = (q0[0] + Dret * alpha[0]) @ Rp.T          # next blade = +pitch
-        ql = np.array([q_end, q_nxt])
-        al = np.array([alpha[-1], alpha[0] @ Rp.T])
+        clear_z = float(max(a[:, 2].max(), b[:, 2].max())) + max(20.0, 0.5 * Dret)
+        q_end = q0[-1] + Dret * alpha[-1]                 # retracted end (lead-out)
+        q_lift = np.array([q_end[0], q_end[1], max(q_end[2], clear_z)])
+        app0 = q0[0] + Dret * alpha[0]                    # this blade's approach pt
+        q_trav = np.array([app0[0], app0[1], max(app0[2], clear_z)]) @ Rp.T
+        q_desc = app0 @ Rp.T                              # next blade retracted start
+        ql = np.array([q_end, q_lift, q_trav, q_desc])
+        al = np.array([alpha[-1], alpha[-1], alpha[0] @ Rp.T, alpha[0] @ Rp.T])
         ml = core.ik_path(ql, al, p.pivot, kind=kind)
         ml[:, 3] = np.unwrap(ml[:, 3]); ml[:, 4] = np.unwrap(ml[:, 4])
         _, dqi, dai, owi = core.densify_fk(ml, p.pivot, kind, reach)
-        ci, _ = _obstacle_clr(dqi, dai, owi, 2)
+        ci, _ = _obstacle_clr(dqi, dai, owi, ql.shape[0])
         index_clearance = float(ci.min())
         min_clear = min(min_clear, index_clearance)
     # structural machine model: tool-assembly capsules vs the trunnion cradle yoke
