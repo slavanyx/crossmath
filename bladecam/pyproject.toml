@@ -23,6 +23,9 @@ bladecam-benchmark = "benchmark:main"
 
 [tool.setuptools]
 package-dir = { "" = "python" }
+# demo.py / benchmark.py live at python/ (top level) and back the bladecam-demo /
+# bladecam-benchmark entry points, so they must be installed as py-modules.
+py-modules = ["demo", "benchmark"]
 
 [tool.setuptools.packages.find]
 where = ["python"]
