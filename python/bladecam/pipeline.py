@@ -41,6 +41,14 @@ class Params:
     fixture_z: float = None      # fixture/table plane z (None = no plane check)
     mount_clearance: float = 30.0  # blade base -> machine table top (mm)
     rails: tuple = None         # optional (a, b) override for external blades
+    # operation parameters (were hardcoded call-site defaults; now config)
+    rough_ap: float = 3.0          # roughing axial depth (mm)
+    rough_ae_frac: float = 0.4     # roughing stepover as fraction of tool dia
+    rough_stock_mm: float = 2.0    # stock left for the estimate
+    troch_ae_frac: float = 0.15    # trochoidal target engagement / tool dia
+    edge_R_ball: float = 3.0       # ball-nose radius for edge finishing (mm)
+    edge_scallop: float = 0.005    # edge scallop allowance (mm)
+    viz_grid: int = 30             # surface visualisation grid resolution
     # machine + process
     machine: MachineLimits = field(default_factory=MachineLimits)
     process: ProcessParams = field(default_factory=ProcessParams)
@@ -109,13 +117,12 @@ def stacked_flank_passes(p: Params) -> dict:
                 cycle_total_s=sum(pp["cycle_s"] for pp in passes))
 
 
-def roughing_time_estimate(p: Params, ap: float = 3.0, ae_frac: float = 0.4,
-                           stock_mm: float = 2.0) -> dict:
+def roughing_time_estimate(p: Params, ap: float = None, ae_frac: float = None,
+                           stock_mm: float = None) -> dict:
     """First-order channel-roughing cycle-time estimate: removed volume / MRR.
-
-    Volume ~ channel cross-section (pitch gap x blade height) x blade length;
-    MRR = ap * ae * feed. This is a planning estimate, not a toolpath.
-    """
+    Operation params default to the config fields on `p` (no hardcoding)."""
+    ap = p.rough_ap if ap is None else ap
+    ae_frac = p.rough_ae_frac if ae_frac is None else ae_frac
     a, b = _blade_rails(p)
     height = float(np.mean(np.linalg.norm(b - a, axis=1)))
     length = float(np.sum(np.linalg.norm(np.diff(0.5*(a + b), axis=0), axis=1)))
@@ -130,22 +137,25 @@ def roughing_time_estimate(p: Params, ap: float = 3.0, ae_frac: float = 0.4,
                 rough_time_s=minutes * 60.0, channel_gap_mm=gap)
 
 
-def edge_finish(p: Params, R_ball: float = 3.0, scallop_allow: float = 0.005):
+def edge_finish(p: Params, R_ball: float = None, scallop_allow: float = None):
     """Point-mill (ball-nose) finishing of the blade leading-edge patch."""
     from . import pointmill
+    R_ball = p.edge_R_ball if R_ball is None else R_ball
+    scallop_allow = p.edge_scallop if scallop_allow is None else scallop_allow
     a, b = _blade_rails(p)
     patch = pointmill.leading_edge_patch(a, b)
     return pointmill.point_mill(patch, R_ball, scallop_allow)
 
 
-def rough_channel(p: Params, ap: float = 3.0, stepover: float = None) -> dict:
+def rough_channel(p: Params, ap: float = None, stepover: float = None) -> dict:
     """Layered roughing toolpath for the flow channel (real passes, not an
     estimate)."""
     from . import roughing
+    ap = p.rough_ap if ap is None else ap
     a, b = _blade_rails(p)
     a2, b2 = _neighbour_walls(a, b, p.n_blades)
     if stepover is None:
-        stepover = 0.4 * 2.0 * p.R
+        stepover = p.rough_ae_frac * 2.0 * p.R
     return roughing.adaptive_rough(a, b, a2, b2, ap, stepover,
                                    p.process.effective_feed_mm_min())
 
@@ -156,7 +166,7 @@ def rough_channel_trochoidal(p: Params, ae_target: float = None) -> dict:
     a, b = _blade_rails(p)
     a2, b2 = _neighbour_walls(a, b, p.n_blades)
     if ae_target is None:
-        ae_target = 0.15 * 2.0 * p.R
+        ae_target = p.troch_ae_frac * 2.0 * p.R
     return roughing.trochoidal_channel(a, b, a2, b2, p.R, ae_target,
                                        p.process.effective_feed_mm_min())
 
@@ -169,7 +179,7 @@ def double_flank_channel(p: Params) -> dict:
     aR, bR = _neighbour_walls(a, b, p.n_blades)      # adjacent blade's wall
     q0, alpha, devL, devR = core.optimize_double_flank(
         a, b, aR, bR, p.R, nv=p.nv, mu=p.mu, gamma=p.gamma, nsweeps=p.nsweeps)
-    nvg = 30
+    nvg = p.viz_grid
     return dict(q0=q0, alpha=alpha, devL=devL, devR=devR,
                 surfL=blade.surface(a, b, nvg), surfR=blade.surface(aR, bR, nvg),
                 aL=a, bL=b, aR=aR, bR=bR)
@@ -203,7 +213,7 @@ def compute(p: Params) -> dict:
     # cylindrical, so the displayed field stays consistent with `dev`.
     eff_gamma = p.gamma if p.strategy == "global" else 0.0
     eff_Rb = p.barrel_R if p.strategy == "global" else 0.0
-    nv_grid = 30
+    nv_grid = p.viz_grid
     surf = blade.surface(a, b, nv_grid)
     v = np.linspace(0.0, 1.0, nv_grid)
     devfield = np.empty((nu, nv_grid))

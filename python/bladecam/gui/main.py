@@ -20,7 +20,7 @@ from pyvistaqt import QtInteractor
 import pyvista as pv
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
-from .model import AppModel, PARAM_SPEC, MACHINE_SPEC, STRATEGIES
+from .model import AppModel, PARAM_SPEC, MACHINE_SPEC, TOOL_SPEC, STRATEGIES
 from .worker import ComputeWorker
 from . import charts
 from .. import postproc, cadio, workflow
@@ -174,7 +174,7 @@ class MainWindow(QtWidgets.QMainWindow):
         host = QtWidgets.QWidget(); vbox = QtWidgets.QVBoxLayout(host)
 
         groups = {}
-        for spec in PARAM_SPEC + MACHINE_SPEC:
+        for spec in PARAM_SPEC + TOOL_SPEC + MACHINE_SPEC:
             key, label, lo, hi, step, kind, group = spec
             groups.setdefault(group, []).append(spec)
         for group, specs in groups.items():

@@ -38,7 +38,7 @@ class ProcessParams:
     spindle_gap: float = 5.0  # mm (clearance below the spindle nose)
     spindle_len: float = 80.0 # mm (modelled spindle-nose length)
     ap: float = 4.0           # axial depth of cut, mm
-    ae: float = None          # radial width of cut, mm (None -> 0.5*tool_dia)
+    ae: float = 0.0           # radial width of cut, mm (<=0 -> auto 0.5*tool_dia)
     Kte: float = 20.0         # tangential EDGE coeff, N/mm
     Kre: float = 18.0         # radial edge coeff, N/mm
     spindle_power_kW: float = 15.0   # available spindle power
@@ -51,7 +51,7 @@ class ProcessParams:
         return self.fz * self.n_teeth * self.rpm
 
     def _ae(self) -> float:
-        return self.ae if self.ae is not None else 0.5 * self.tool_dia
+        return self.ae if (self.ae and self.ae > 0.0) else 0.5 * self.tool_dia
 
     def cutting_forces(self, fz: float, ae: float = None) -> dict:
         """Mechanistic milling-force model (Altintas): integrate the per-tooth

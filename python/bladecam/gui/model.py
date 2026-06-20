@@ -35,15 +35,43 @@ PARAM_SPEC = [
     ("r_hub",     "Hub radius (mm)",        5.0, 100.0, 1.0,  "float", "Geometry"),
     ("r_shroud",  "Shroud radius (mm)",     5.0, 150.0, 1.0,  "float", "Geometry"),
     ("z_span",    "Blade height (mm)",      5.0, 100.0, 1.0,  "float", "Geometry"),
+    ("z_offset",  "Shroud z-offset (mm)",   0.0,  50.0, 1.0,  "float", "Geometry"),
     ("nu",        "Stations",              20,   200,   5,    "int",   "Geometry"),
     ("n_blades",  "Blade count",            3,    40,    1,   "int",   "Geometry"),
+    ("collision_substeps", "Collision substeps", 0, 8,   1,   "int",   "Setup"),
+    ("mount_clearance", "Mount clearance (mm)", 0.0, 200.0, 5.0, "float", "Setup"),
 ]
 
-# Machine / process editors (these map to nested objects, not Params fields).
+# Tool / cutting editors -- map 1:1 to ProcessParams fields (no hardcoding).
+TOOL_SPEC = [
+    ("tool_dia",   "Tool diameter (mm)",    1.0, 50.0, 0.5,  "float", "Tool / cutting"),
+    ("n_teeth",    "Teeth",                 1,   12,   1,    "int",   "Tool / cutting"),
+    ("fz",         "Feed/tooth (mm)",       0.005, 0.5, 0.005, "float", "Tool / cutting"),
+    ("rpm",        "Spindle rpm",           500, 60000, 500, "float", "Tool / cutting"),
+    ("ap",         "Axial depth ap (mm)",   0.1, 50.0, 0.5,  "float", "Tool / cutting"),
+    ("ae",         "Radial width ae (0=auto)", 0.0, 50.0, 0.5, "float", "Tool / cutting"),
+    ("Kt",         "Kt (N/mm²)",            100, 4000, 50,   "float", "Tool / cutting"),
+    ("Kr",         "Kr ratio",              0.05, 1.0, 0.05, "float", "Tool / cutting"),
+    ("Kte",        "Edge Kte (N/mm)",       0.0, 200.0, 1.0, "float", "Tool / cutting"),
+    ("Kre",        "Edge Kre (N/mm)",       0.0, 200.0, 1.0, "float", "Tool / cutting"),
+    ("flute_len",  "Flute length (mm)",     5.0, 120.0, 1.0, "float", "Tool / cutting"),
+    ("holder_dia", "Holder dia (mm)",       5.0, 100.0, 1.0, "float", "Tool / cutting"),
+    ("holder_gap", "Holder gap (mm)",       0.0, 50.0, 0.5,  "float", "Tool / cutting"),
+    ("holder_len", "Holder length (mm)",    5.0, 150.0, 1.0, "float", "Tool / cutting"),
+    ("spindle_dia","Spindle dia (mm)",      10.0, 200.0, 1.0, "float", "Tool / cutting"),
+    ("spindle_gap","Spindle gap (mm)",      0.0, 50.0, 0.5,  "float", "Tool / cutting"),
+    ("spindle_len","Spindle length (mm)",   10.0, 400.0, 5.0, "float", "Tool / cutting"),
+    ("spindle_power_kW", "Spindle power (kW)", 0.5, 60.0, 0.5, "float", "Tool / cutting"),
+    ("max_force_N", "Max force (N)",        100, 10000, 100, "float", "Tool / cutting"),
+    ("E",          "Tool E (N/mm²)",        50e3, 1e6, 10e3, "float", "Tool / cutting"),
+    ("dev_allow_um", "Deflection budget (µm)", 1, 500, 5,   "float", "Tool / cutting"),
+    ("feed_max_mm_min", "Feed ceiling (mm/min)", 200, 20000, 200, "float", "Tool / cutting"),
+]
+_TOOL_KEYS = [s[0] for s in TOOL_SPEC]
+
+# Machine quick editors (the full envelope is in the Machine config dialog).
 MACHINE_SPEC = [
     ("v_rot",     "Rotary vmax (rad/s)",    0.05, 3.0,  0.05, "float", "Machine / process"),
-    ("feed_max",  "Feed ceiling (mm/min)",  200, 20000, 200,  "int",   "Machine / process"),
-    ("dev_allow", "Deflection budget (µm)", 5,   500,   5,    "int",   "Machine / process"),
     ("kind",      "Kinematics 0=table 1=head", 0, 1,    1,    "int",   "Machine / process"),
 ]
 
@@ -55,20 +83,20 @@ class AppModel:
         d = asdict(Params())
         self.values = {k: d[k] for (k, *_rest) in PARAM_SPEC}
         self.strategy = "global"
-        # machine/process kept as nested objects, exposed via a few keys
+        # tool / cutting params -> editable, 1:1 with ProcessParams fields
+        td = asdict(ProcessParams())
+        for k in _TOOL_KEYS:
+            self.values[k] = td[k]
+        # machine quick editors + strategy-preset fields without a dedicated editor
         self.values["v_rot"] = MachineLimits().v_rot
         self.values["kind"] = MachineLimits().kind
-        self.values["feed_max"] = ProcessParams().feed_max_mm_min
-        self.values["dev_allow"] = ProcessParams().dev_allow_um
-        self.values["nv"] = Params().nv               # strategy-preset fields with
-        self.values["swept_window"] = Params().swept_window   # no dedicated editor
+        self.values["nv"] = Params().nv
+        self.values["swept_window"] = Params().swept_window
         self.rails = None  # optional external (a, b)
         self.frf = None    # optional measured FRF (freq, reG, imG)
         # selected machine profile (a Machine; editable via the config editor)
         self.machine_name = "Generic 5-axis trunnion"
         self.machine = replace(machine_lib.get_machine(self.machine_name))
-        # full tool (ProcessParams) preset; feed/dev editors override on build
-        self.tool = ProcessParams()
         # OrcaSlicer-style preset store + the active preset name per category
         self.presets = preset_lib.PresetStore()
         self.preset_names = {"machine": self.machine_name,
@@ -90,9 +118,9 @@ class AppModel:
             self.values["v_rot"] = self.machine.v_rot
             self.values["kind"] = self.machine.kind
         elif kind == "tool":
-            self.tool = preset_lib.tool_from_dict(d)
-            self.values["feed_max"] = self.tool.feed_max_mm_min
-            self.values["dev_allow"] = self.tool.dev_allow_um
+            for k in _TOOL_KEYS:
+                if k in d and d[k] is not None:
+                    self.values[k] = d[k]
         elif kind == "strategy":
             for k, val in d.items():
                 if k == "strategy":
@@ -140,23 +168,26 @@ class AppModel:
         return replace(self.machine, v_rot=v["v_rot"], kind=int(v["kind"]),
                        name=self.machine.name)
 
-    def _live_tool(self):
+    def _live_tool(self) -> ProcessParams:
         v = self.values
-        return replace(self.tool, feed_max_mm_min=v["feed_max"],
-                       dev_allow_um=v["dev_allow"])
+        kw = {k: v[k] for k in _TOOL_KEYS}
+        kw["n_teeth"] = int(kw["n_teeth"])
+        return ProcessParams(**kw)
 
     def build_params(self, strategy=None) -> Params:
         v = self.values
         return Params(
             nu=int(v["nu"]), r_hub=v["r_hub"], r_shroud=v["r_shroud"],
-            z_span=v["z_span"], wrap=v["wrap"], twist=v["twist"],
-            n_blades=int(v["n_blades"]), R=v["R"],
+            z_span=v["z_span"], z_offset=v["z_offset"], wrap=v["wrap"],
+            twist=v["twist"], n_blades=int(v["n_blades"]), R=v["R"],
             strategy=strategy or self.strategy,
             smooth_window=int(v["smooth_window"]),
             nv=int(v["nv"]),
             mu=v["mu"], gamma=v["gamma"], nsweeps=int(v["nsweeps"]),
             barrel_R=v["barrel_R"], barrel_pos=v["barrel_pos"],
             swept_weight=v["swept_weight"], swept_window=int(v["swept_window"]),
+            collision_substeps=int(v["collision_substeps"]),
+            mount_clearance=v["mount_clearance"],
             # the selected machine profile drives reachability + limits; the
             # v_rot/kind editors fine-tune the active profile
             machine=self._live_machine(),
