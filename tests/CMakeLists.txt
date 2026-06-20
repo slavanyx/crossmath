@@ -154,6 +154,12 @@ if(PYTHON3)
   set_tests_properties(project PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Persistent interval-dexel stock + rest-machining
+  add_test(NAME stock
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_stock.py)
+  set_tests_properties(stock PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Certified post-processors (control dialects + certification validator)
   add_test(NAME post
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_post.py)

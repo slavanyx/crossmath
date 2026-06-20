@@ -17,7 +17,7 @@ module bladecam_capi
   use collision_mod, only: tool_clearance, swept_clearance, holder_clearance, &
                            assembly_clearance
   use struct_machine_mod, only: struct_clearance
-  use dexel_mod, only: dexel_carve
+  use dexel_mod, only: dexel_carve, dexel_removed_intervals
   implicit none
 
 contains
@@ -232,5 +232,19 @@ contains
     call dexel_carve(q0, alpha, R, Lf, nu, orig, dir, seg0, nray, &
                      removed, first_cut)
   end subroutine bc_dexel_carve
+
+  !> Interval-dexel stock carve: merged removed intervals per ray (rest-machining).
+  subroutine bc_dexel_removed_intervals(q0, alpha, R, Lf, nu, orig, dir, nray, &
+                                        maxseg, rlo, rhi, rn) &
+       bind(C, name="bc_dexel_removed_intervals")
+    integer(c_int), value :: nu, nray, maxseg
+    real(c_double), intent(in)  :: q0(3,nu), alpha(3,nu), Lf(nu)
+    real(c_double), intent(in)  :: orig(3,nray), dir(3,nray)
+    real(c_double), value       :: R
+    real(c_double), intent(out) :: rlo(maxseg,nray), rhi(maxseg,nray)
+    integer(c_int), intent(out) :: rn(nray)
+    call dexel_removed_intervals(q0, alpha, R, Lf, nu, orig, dir, nray, &
+                                 maxseg, rlo, rhi, rn)
+  end subroutine bc_dexel_removed_intervals
 
 end module bladecam_capi

@@ -10,7 +10,7 @@ module dexel_mod
   use vec3_mod
   implicit none
   private
-  public :: dexel_carve
+  public :: dexel_carve, dexel_removed_intervals
 
 contains
 
@@ -111,5 +111,71 @@ contains
       first_cut(ir) = a(1,1)       ! smallest removed t (intervals are sorted)
     end do
   end subroutine dexel_carve
+
+  !> Merged set of removed sub-intervals along each ray for the swept tool, so a
+  !> PERSISTENT interval-dexel stock can be carried across operations (roughing
+  !> then finishing -> rest material). For ray r the tool's footprint is the
+  !> union of [tin,tout] over all poses, clamped to t>=0, merged into disjoint
+  !> ascending intervals written to rlo(:,r)/rhi(:,r) with count rn(r) (capped at
+  !> maxseg). Unlike the height-field carve this captures removal from EITHER end
+  !> or the middle of a ray, so a tilted finish tool and a top-down rougher are
+  !> both represented correctly.
+  subroutine dexel_removed_intervals(q0, alpha, R, Lf, nu, orig, dir, nray, &
+                                     maxseg, rlo, rhi, rn)
+    integer,  intent(in)  :: nu, nray, maxseg
+    real(dp), intent(in)  :: q0(3,nu), alpha(3,nu), R, Lf(nu)
+    real(dp), intent(in)  :: orig(3,nray), dir(3,nray)
+    real(dp), intent(out) :: rlo(maxseg,nray), rhi(maxseg,nray)
+    integer,  intent(out) :: rn(nray)
+    integer  :: ir, i, k, m, nseg, nm
+    real(dp) :: ahat(3,nu), a(2,nu), tin, tout, lo, hi, clo, chi
+    logical  :: hit
+
+    do i = 1, nu
+      ahat(:,i) = unit3(alpha(:,i))
+    end do
+
+    do ir = 1, nray
+      rn(ir) = 0
+      nseg = 0
+      do i = 1, nu
+        call ray_cyl(orig(:,ir), dir(:,ir), q0(:,i), ahat(:,i), R, Lf(i), &
+                     tin, tout, hit)
+        if (.not. hit) cycle
+        lo = max(0.0_dp, tin); hi = tout
+        if (hi > lo) then
+          nseg = nseg + 1
+          a(1,nseg) = lo; a(2,nseg) = hi
+        end if
+      end do
+      if (nseg == 0) cycle
+      ! sort sub-intervals by start (insertion sort; nseg <= nu)
+      do k = 2, nseg
+        lo = a(1,k); hi = a(2,k); m = k - 1
+        do while (m >= 1)
+          if (a(1,m) <= lo) exit
+          a(1,m+1) = a(1,m); a(2,m+1) = a(2,m); m = m - 1
+        end do
+        a(1,m+1) = lo; a(2,m+1) = hi
+      end do
+      ! merge overlaps into disjoint ascending intervals; store (cap at maxseg)
+      nm = 0
+      clo = a(1,1); chi = a(2,1)
+      do k = 2, nseg
+        if (a(1,k) <= chi) then
+          if (a(2,k) > chi) chi = a(2,k)
+        else
+          if (nm < maxseg) then
+            nm = nm + 1; rlo(nm,ir) = clo; rhi(nm,ir) = chi
+          end if
+          clo = a(1,k); chi = a(2,k)
+        end if
+      end do
+      if (nm < maxseg) then
+        nm = nm + 1; rlo(nm,ir) = clo; rhi(nm,ir) = chi
+      end if
+      rn(ir) = nm
+    end do
+  end subroutine dexel_removed_intervals
 
 end module dexel_mod

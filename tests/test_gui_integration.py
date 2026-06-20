@@ -85,6 +85,9 @@ def main():
     check(np.all(np.isfinite(pipeline.double_flank_channel(p)["devL"])),
           "operation: double-flank channel")
     check(pipeline.rough_channel(p)["total_len_mm"] > 0, "operation: roughing")
+    _rm = pipeline.rest_machining(p)
+    check(_rm["finish_removed_mm3"] <= _rm["finish_from_raw_mm3"] + 1e-6,
+          "operation: rest-machining (finish removes only the rest)")
     check(pipeline.edge_finish(p)["n_rows"] >= 2, "operation: edge finishing")
     check(pipeline.stacked_flank_passes(p)["n_passes"] >= 1, "operation: stacked passes")
 

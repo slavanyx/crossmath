@@ -13,6 +13,7 @@ from ctypes import c_double, c_int, POINTER
 import numpy as np
 
 _DBL = POINTER(c_double)
+_INT = POINTER(c_int)
 
 
 def _find_library() -> str:
@@ -72,6 +73,9 @@ _lib.bc_deviation_barrel.argtypes = [_DBL, _DBL, c_double, c_double, c_double,
                                      _DBL, c_int, _DBL]
 _lib.bc_dexel_carve.argtypes = [_DBL, _DBL, c_double, _DBL, c_int,
                                 _DBL, _DBL, _DBL, c_int, _DBL, _DBL]
+_lib.bc_dexel_removed_intervals.argtypes = [_DBL, _DBL, c_double, _DBL, c_int,
+                                            _DBL, _DBL, c_int, c_int,
+                                            _DBL, _DBL, _INT]
 _lib.bc_assembly_clearance.argtypes = [_DBL, _DBL, c_int, _DBL, _DBL, _DBL,
                                        c_int, _DBL, c_int, _DBL, _DBL,
                                        c_int, c_int, _DBL]
@@ -363,6 +367,26 @@ def dexel_carve(q0, alpha, R, Lf, orig, dir, seg0):
                         _ptr(orig), _ptr(dir), _ptr(seg0), c_int(nray),
                         _ptr(removed), _ptr(first_cut))
     return removed, first_cut
+
+
+def dexel_removed_intervals(q0, alpha, R, Lf, orig, dir, maxseg=32):
+    """Merged removed sub-intervals along each ray for the swept capped-cylinder
+    tool (poses q0,alpha (nu,3); flute lengths Lf scalar/(nu,)). For an
+    interval-dexel STOCK carry-across-operations: ray r runs from orig[r] along
+    unit dir[r]; returns (rlo, rhi, rn) where rlo[r,:rn[r]], rhi[r,:rn[r]] are the
+    disjoint ascending t-intervals the tool removed (clamped to t>=0). Captures
+    removal from either end or the middle of a ray (unlike a height field)."""
+    q0 = _c(q0); alpha = _c(alpha); orig = _c(orig); dir = _c(dir)
+    nu = q0.shape[0]; nray = orig.shape[0]
+    Lf = _c(np.full(nu, Lf) if np.isscalar(Lf) else Lf)
+    rlo = np.zeros((nray, maxseg), dtype=np.float64)
+    rhi = np.zeros((nray, maxseg), dtype=np.float64)
+    rn = np.zeros(nray, dtype=np.int32)
+    _lib.bc_dexel_removed_intervals(_ptr(q0), _ptr(alpha), c_double(R), _ptr(Lf),
+                                    c_int(nu), _ptr(orig), _ptr(dir), c_int(nray),
+                                    c_int(maxseg), _ptr(rlo), _ptr(rhi),
+                                    rn.ctypes.data_as(_INT))
+    return rlo, rhi, rn
 
 
 def ik_path(Q: np.ndarray, O: np.ndarray, pivot, kind: int = 0) -> np.ndarray:
