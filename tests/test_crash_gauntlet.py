@@ -157,11 +157,19 @@ def main():
         # a deep, stubby tool on a normal blade: the holder/spindle reaches below
         # the blade base toward the hub floor. If the hub is not an obstacle the
         # pipeline reports collision-free even though the assembly is in the hub.
+        # a normal tool clears the hub (no false positive)
+        rn = compute(Params(strategy="global", nu=24))
+        check(rn.get("hub_clearance", -1) > 0 and rn["collision_free"],
+              "G3a: a normal tool clears the hub (no false positive)",
+              f"(hub {rn.get('hub_clearance', float('nan')):.1f} mm)")
+        # a stubby deep tool drives the holder/spindle into the hub floor
         r = compute(Params(strategy="global", nu=24,
                            process=ProcessParams(flute_len=10.0, holder_len=40.0,
                                                  holder_dia=24.0)))
-        has_hub = "hub_clearance" in r
-        check(has_hub, "G3: pipeline reports a hub/shroud clearance term")
+        check("hub_clearance" in r and r["hub_clearance"] < 0
+              and not r["collision_free"],
+              "G3b: a deep stubby tool is caught hitting the hub",
+              f"(hub {r['hub_clearance']:.1f} mm)")
     except Exception as e:
         check(False, "G3: pipeline hub clearance", f"({e})")
 

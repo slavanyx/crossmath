@@ -438,3 +438,116 @@ def topp(q: np.ndarray, vmax, amax, a0: float = 0.0, aN: float = 0.0):
     _lib.bc_topp(_ptr(q), c_int(ndof), c_int(n), _ptr(vmax), _ptr(amax),
                  c_double(a0), c_double(aN), _ptr(aprof), _ptr(ttotal))
     return aprof, float(ttotal[0])
+
+
+# --------------------------------------------------------------------------
+# Joint-space (forward-kinematics) swept collision: the machine moves the 5
+# JOINTS linearly between stations, so the tool tip+axis it traverses in the
+# part frame is the FK of the interpolated joints -- a curve, not the straight
+# part-frame chord the bare swept routines interpolate. Densifying each segment
+# into FK sub-poses (with a substep count that keeps the chord-vs-arc residual
+# under tol -- uniform conservative advancement) and reusing the t-exact
+# per-point golden core makes the swept check verify the path the machine RUNS.
+# --------------------------------------------------------------------------
+def _rotx_np(a):
+    c, s = np.cos(a), np.sin(a)
+    return np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
+
+
+def _rotz_np(a):
+    c, s = np.cos(a), np.sin(a)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
+def fk_poses(machine_path, pivot, kind=0):
+    """Forward kinematics: machine axes (n,5)=[X,Y,Z,A,C] -> part-frame contact
+    point q0 (n,3) and tool axis (n,3). Matches kinematics.f90 forward_kin_ac:
+    O = Rz(C)Rx(A) z; Q = Rz(C)Rx(A)(Pm-piv)+piv (kind 0) or Pm (kind 1)."""
+    m = _c(machine_path); piv = np.asarray(pivot, float)
+    n = m.shape[0]
+    q0 = np.empty((n, 3)); ax = np.empty((n, 3))
+    z = np.array([0.0, 0.0, 1.0])
+    for i in range(n):
+        RR = _rotz_np(m[i, 4]) @ _rotx_np(m[i, 3])
+        ax[i] = RR @ z
+        q0[i] = m[i, 0:3] if kind == 1 else RR @ (m[i, 0:3] - piv) + piv
+    return q0, ax
+
+
+def densify_fk(machine_path, pivot, kind, reach, tol=0.03, cap=400):
+    """Per-segment FK densification. Returns the dense machine joints `dense_m`
+    (Nd,5), the dense part-frame poses (q0, axis) (Nd,3), and an `owner` array
+    mapping each dense pose to its original segment index. The substep count for
+    a segment is ceil(dtheta / sqrt(8 tol / rho)), with dtheta = |dA|+|dC| and
+    rho bounding the farthest tool point's distance from the rotary axes, so the
+    part-frame lerp between consecutive FK sub-poses deviates from the true arc by
+    < tol (the conservative-advancement guarantee, #8)."""
+    m = _c(machine_path); piv = np.asarray(pivot, float)
+    nu = m.shape[0]
+    q0s, _ = fk_poses(m, piv, kind)
+    dense_m = []; owner = []
+    for i in range(nu - 1):
+        dth = abs(m[i + 1, 3] - m[i, 3]) + abs(m[i + 1, 4] - m[i, 4])
+        rho = max(np.hypot(*q0s[i, :2]), np.hypot(*q0s[i + 1, :2])) + reach
+        if dth < 1e-12 or rho < 1e-12:
+            nsub = 1
+        else:
+            nsub = int(np.ceil(dth / np.sqrt(8.0 * tol / rho)))
+        nsub = max(1, min(nsub, cap))
+        for sidx in range(nsub):
+            t = sidx / nsub
+            dense_m.append((1.0 - t) * m[i] + t * m[i + 1])
+            owner.append(i)
+    dense_m.append(m[-1]); owner.append(nu - 2)
+    dense_m = np.array(dense_m)
+    dq, da = fk_poses(dense_m, piv, kind)
+    return dense_m, dq, da, np.array(owner, dtype=int)
+
+
+def reduce_to_segments(clr_dense, owner, nu):
+    return _reduce_to_segments(clr_dense, owner, nu)
+
+
+def _reduce_to_segments(clr_dense, owner, nu):
+    """Collapse a dense per-sub-segment clearance back to nu original entries:
+    clr[i] = min over the dense segments owned by original segment i; clr[-1] is
+    the dense static endpoint."""
+    out = np.full(nu, np.inf)
+    for j in range(len(owner) - 1):
+        if clr_dense[j] < out[owner[j]]:
+            out[owner[j]] = clr_dense[j]
+    out[nu - 1] = clr_dense[-1]
+    return out
+
+
+def assembly_clearance_fk(machine_path, pivot, kind, seg_R, seg_lo, seg_hi, pts,
+                          plane_pt=None, plane_n=None, nscan=4, tol=0.03):
+    """Guaranteed swept clearance of the tool ASSEMBLY along the real joint-space
+    (FK) path -- the #1+#8 collision check. Same return contract as
+    assembly_clearance (clr (nu,); clr[i] covers segment [i,i+1])."""
+    reach = float(np.max(seg_hi) + np.max(seg_R))
+    _, dq, da, owner = densify_fk(machine_path, pivot, kind, reach, tol=tol)
+    clr_dense = assembly_clearance(dq, da, seg_R, seg_lo, seg_hi, pts,
+                                   plane_pt=plane_pt, plane_n=plane_n, nscan=nscan)
+    return _reduce_to_segments(clr_dense, owner, len(machine_path))
+
+
+def holder_clearance_fk(machine_path, pivot, kind, holder_R, base, holder_len,
+                        pts, nscan=4, tol=0.03):
+    """Guaranteed SWEPT holder-vs-cut-blade clearance along the FK path (#4): the
+    holder modelled as a one-segment assembly, densified and swept like the rest
+    (replaces the per-station holder_clearance)."""
+    reach = float(base + holder_len + holder_R)
+    _, dq, da, owner = densify_fk(machine_path, pivot, kind, reach, tol=tol)
+    clr_dense = assembly_clearance(dq, da, np.array([holder_R]), np.array([base]),
+                                   np.array([base + holder_len]), pts, nscan=nscan)
+    return _reduce_to_segments(clr_dense, owner, len(machine_path))
+
+
+def holder_clearance_swept(q0, alpha, pts, holder_R, base, holder_len, nscan=8):
+    """SWEPT holder-vs-obstacle clearance (the #4 fix): the holder as a one-
+    segment capped cylinder, swept + golden-refined over each motion segment,
+    replacing the per-station holder_clearance which missed a holder swinging
+    into the cut blade BETWEEN stations. q0,alpha (nu,3); pts (npts,3)."""
+    return assembly_clearance(q0, alpha, np.array([holder_R]), np.array([base]),
+                              np.array([base + holder_len]), pts, nscan=nscan)

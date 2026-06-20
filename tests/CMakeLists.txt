@@ -208,6 +208,12 @@ if(PYTHON3)
   set_tests_properties(mesh_collide PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Crash gauntlet (adversarial collision scenarios vs joint-FK oracles)
+  add_test(NAME crash_gauntlet
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_crash_gauntlet.py)
+  set_tests_properties(crash_gauntlet PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Preset system (machine/tool/strategy save/load + JSON round-trip)
   add_test(NAME presets
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_presets.py)
