@@ -60,14 +60,26 @@ contains
     end do
 
     ! velocity-limit curve (kinematic part of the MVC): a = sdot^2 capped per axis
-    ! by (vmax_i/|q'_i|)^2 at each station.
-    do k = 1, n
-      abar(k) = huge(1.0_dp)
+    ! so the REALISED axis speed stays within vmax. The motion the machine runs
+    ! between two stations is a straight joint-space segment, so the speed it
+    ! actually realises on [k,k+1] is |q_{k+1}-q_k|/ds * sdot_avg -- the SEGMENT
+    ! FORWARD-difference slope, not the central-difference slope at a station
+    ! (which corresponds to no realised motion). Bounding the central slope is a
+    ! discretisation shortcut that under-constrains a curvature kink, letting the
+    ! posted rotary speed exceed vmax between stations. Cap each segment by its
+    ! own forward slope: cseg = min_i (vmax_i/|q_seg,i|)^2, and apply it to BOTH
+    ! endpoint stations. Then sdot_k, sdot_{k+1} <= sqrt(cseg), so
+    !     realised speed = |q_seg|*sdot_avg <= |q_seg|*sqrt(cseg) <= vmax,
+    ! i.e. the bound holds on the exact quantity the post-processor verifies.
+    abar = huge(1.0_dp)
+    do k = 1, n - 1
+      cap = huge(1.0_dp)
       do i = 1, ndof
-        if (abs(qp(i, k)) > 1.0e-12_dp) then
-          abar(k) = min(abar(k), (vmax(i) / abs(qp(i, k)))**2)
-        end if
+        denom = abs(q(i, k+1) - q(i, k)) / ds
+        if (denom > 1.0e-12_dp) cap = min(cap, (vmax(i) / denom)**2)
       end do
+      abar(k)   = min(abar(k),   cap)
+      abar(k+1) = min(abar(k+1), cap)
     end do
 
     ! Feasible profile by ITERATED forward/backward clamping. The acceleration

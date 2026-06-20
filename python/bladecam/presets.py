@@ -93,15 +93,18 @@ def _builtin_tools() -> dict:
 
 
 def _builtin_strategies() -> dict:
-    base = dict(strategy="global", R=6.0, nv=41, mu=1.0, gamma=0.0,
+    # balanced multi-objective default: minimise the swept-envelope error AND
+    # keep the tool-axis motion smooth (mu high enough that the swept term does
+    # not wiggle the path).
+    base = dict(strategy="global", R=6.0, nv=41, mu=6.0, gamma=0.0,
                 barrel_R=0.0, barrel_pos=0.0, nsweeps=3, smooth_window=5,
-                swept_weight=0.0, swept_window=8)
+                swept_weight=0.3, swept_window=8)
     return {
         "Flank finish (global)": dict(base),
-        "Min-max accuracy": dict(base, strategy="minmax"),
-        "Smoothed orientation": dict(base, strategy="smoothed", mu=2.0),
+        "Min-max accuracy": dict(base, strategy="minmax", mu=1.0, swept_weight=0.0),
+        "Smoothed orientation": dict(base, strategy="smoothed", mu=10.0),
         "Barrel finish (R200)": dict(base, barrel_R=200.0, barrel_pos=15.0),
-        "Low swept overcut": dict(base, swept_weight=0.5),
+        "Low swept overcut": dict(base, swept_weight=0.6),
     }
 
 

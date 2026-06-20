@@ -33,16 +33,21 @@ class Params:
     nv: int = 41
     strategy: str = "minmax"    # two_point | minmax | smoothed | global
     smooth_window: int = 5
-    mu: float = 1.0             # global-optimizer smoothness weight (dimensionless)
+    # Multi-objective weights for the global optimiser. The objective minimises
+    # the REAL machined error (swept envelope) AND keeps the tool-axis motion
+    # smooth, not just the (misleading) per-ruling residual: a higher mu is
+    # required so the swept term does not wiggle the path (raising jerk / rotary
+    # winding past the TOPP / post limits). mu=6, swept_weight=0.3 is the balanced
+    # point -- low envelope error AND smooth motion (see AUDIT.md §D/§Q).
+    mu: float = 6.0             # global-optimizer smoothness weight (dimensionless)
     gamma: float = 0.0          # tool taper half-angle (rad); 0 = cylinder
     barrel_R: float = 0.0       # barrel arc radius (0 = cylinder/cone tool)
     barrel_pos: float = 0.0     # barrel widest-point axial position (mm from q0)
     nsweeps: int = 3
-    # The swept-overcut penalty minimises the REPORTED envelope error but trades
-    # tool-axis smoothness (jerk/rotary winding), so it is a deliberate choice
-    # (Operations ▸ Minimize swept overcut, or the 'Low swept overcut' preset),
-    # not a silent default. 0 = off (per-ruling fit only).
-    swept_weight: float = 0.0   # global-optimizer swept-overcut penalty
+    # On by default and balanced against mu above: the global optimiser minimises
+    # the swept-envelope error it reports (optimise-what-you-report). 0 = off
+    # (per-ruling fit only).
+    swept_weight: float = 0.3   # global-optimizer swept-overcut penalty
     swept_window: int = 8       # neighbour index half-width for swept penalty
     collision_substeps: int = 2  # swept-motion sampling between stations
     fixture_z: float = None      # fixture/table plane z (None = no plane check)
