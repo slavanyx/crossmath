@@ -105,6 +105,7 @@ class AppModel:
         self.values["pivot_x"], self.values["pivot_y"], self.values["pivot_z"] = px, py, pz
         self.rails = None  # optional external (a, b)
         self.frf = None    # optional measured FRF (freq, reG, imG)
+        self.fixture_mesh = None  # optional (verts, faces) fixture/machine body
         # selected machine profile (a Machine; editable via the config editor)
         self.machine_name = "Generic 5-axis trunnion"
         self.machine = replace(machine_lib.get_machine(self.machine_name))
@@ -241,6 +242,7 @@ class AppModel:
             machine=self._live_machine(),
             process=self._live_tool(),
             rails=self.rails,
+            fixture_mesh=self.fixture_mesh,
         )
 
     # ---- project (.bladecam) snapshot: the complete editable state ----

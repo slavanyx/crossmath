@@ -75,6 +75,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(filem, "Load blisk (all blades)…", self.load_blisk)
         self._act(filem, "Next blisk blade", self.next_blisk_blade)
         self._act(filem, "Overlay CAD (STL/STEP/IGES)…", self.import_cad)
+        self._act(filem, "Load fixture/machine body (STL/STEP)…", self.load_fixture)
         self._act(filem, "Load tool-tip FRF (CSV)…", self.load_frf)
         self._act(filem, "Use parametric blade", self.use_parametric)
         filem.addSeparator()
@@ -793,6 +794,9 @@ class MainWindow(QtWidgets.QMainWindow):
             ("structural-link clearance",
              ("—" if r.get("link_clearance", float("inf")) == float("inf")
               else f"{r.get('link_clearance'):.2f} mm")),
+            ("fixture/body clearance",
+             ("—" if r.get("mesh_clearance", float("inf")) == float("inf")
+              else f"{r.get('mesh_clearance'):.2f} mm")),
             ("collision-free", str(r["collision_free"])),
             ("machine", r.get("machine_name", "—")),
             ("reachable", _reach_str(r)),
@@ -1062,6 +1066,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status.showMessage(
             f"rest-machining: finish cuts {rm['finish_removed_mm3']:.0f} mm³ "
             f"({rm['rest_fraction']*100:.0f}% of raw)")
+
+    def load_fixture(self):
+        """Load a fixture / machine-body triangle mesh (STL/STEP/IGES, in part
+        coordinates) for sub-mm tool-assembly collision checking."""
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Load fixture / machine body", "",
+            "CAD (*.stl *.step *.stp *.iges *.igs)")
+        if not fn:
+            return
+        try:
+            v, f = cadio.read_cad(fn)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Fixture load failed", str(e))
+            return
+        self.model.fixture_mesh = (v, f)
+        self.status.showMessage(f"fixture loaded ({len(f)} triangles) — "
+                                "checking tool-assembly clearance")
+        self.recompute(compare=True)
 
     def import_cad(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(

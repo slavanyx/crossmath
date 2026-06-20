@@ -173,10 +173,22 @@ For each angle: the question, the techniques, and BladeCAM-specific targets.
   the IK world→part axis map; defaults must NOT false-trigger; a fat column
   through the work zone must fail the collision gate. Mutation: drop the radius
   subtraction / unclamp seg-seg / endpoints-only scan / swap Rx·Rz — all killed.
+- **Mesh-body collision (`mesh_collide.f90`):** tool-assembly capsules vs an
+  imported TRIANGLE MESH (fixture / clamp / machine casting), the sub-mm check
+  the capsule links approximate. seg-triangle distance = 0 if it pierces, else
+  min(2 endpoint point-triangle, 3 edge-edge) -- validated vs brute-force sampled
+  distance over random configs (catches any dropped feature). SIGNED: a capsule
+  inside the closed solid is a collision (parity ray-cast inside test), so a tool
+  buried in a fixture body is caught even when touching no face. Oracles: offset
+  = height-r, pierce <0, plane-cross-outside not a hit, box inside <0 / outside
+  >0, swept pass-through caught; pipeline fixture engulfing the tool fails the
+  gate, a distant one does not. Mutation: pierce guard / inside sign / parity
+  even-odd / each edge / endpoint term -- all killed.
 - Targets: `machine.py` (Machine struct fields, tool_branch_capsules,
   structure_capsules, _rotx/_rotz), `struct_machine.f90` (seg_seg_dist,
-  capsule_clearance, struct_clearance), `collision.f90` (assembly_*),
-  `pipeline.py` (obstacle assembly, mount_z, link_clearance).
+  capsule_clearance, struct_clearance), `mesh_collide.f90` (pt_tri_dist,
+  seg_tri_dist, point_in_mesh, mesh_clearance), `collision.f90` (assembly_*),
+  `pipeline.py` (obstacle assembly, mount_z, link_clearance, fixture_mesh).
 
 ### L. Cutting-force & process physics (mechanistic model)
 - Force scaling: F_peak, F_mean, power, torque must rise monotonically with fz,

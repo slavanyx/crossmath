@@ -17,6 +17,7 @@ module bladecam_capi
   use collision_mod, only: tool_clearance, swept_clearance, holder_clearance, &
                            assembly_clearance
   use struct_machine_mod, only: struct_clearance
+  use mesh_collide_mod, only: mesh_clearance
   use dexel_mod, only: dexel_carve, dexel_removed_intervals
   implicit none
 
@@ -232,6 +233,15 @@ contains
     call dexel_carve(q0, alpha, R, Lf, nu, orig, dir, seg0, nray, &
                      removed, first_cut)
   end subroutine bc_dexel_carve
+
+  !> Tool-assembly clearance to a triangle MESH (fixture/machine body), swept.
+  subroutine bc_mesh_clearance(acaps, na, tri, ntri, nu, nscan, clr) &
+       bind(C, name="bc_mesh_clearance")
+    integer(c_int), value :: na, ntri, nu, nscan
+    real(c_double), intent(in)  :: acaps(7,na,nu), tri(9,ntri)
+    real(c_double), intent(out) :: clr(nu)
+    call mesh_clearance(acaps, na, tri, ntri, nu, nscan, clr)
+  end subroutine bc_mesh_clearance
 
   !> Interval-dexel stock carve: merged removed intervals per ray (rest-machining).
   subroutine bc_dexel_removed_intervals(q0, alpha, R, Lf, nu, orig, dir, nray, &
