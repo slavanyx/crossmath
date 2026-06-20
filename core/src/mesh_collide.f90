@@ -99,14 +99,24 @@ contains
   !> (a ray crosses the sheet an arbitrary number of times), so it is skipped: a
   !> tool of radius r crossing a zero-thickness sheet already drives the
   !> seg-triangle distance below r, so the unsigned clearance catches it.
-  pure function cap_mesh_clr(p0, p1, r, tri, ntri, signed) result(clr)
+  pure function cap_mesh_clr(p0, p1, r, tri, tlo, thi, ntri, signed) result(clr)
     integer,  intent(in) :: ntri
-    real(dp), intent(in) :: p0(3), p1(3), r, tri(9,ntri)
+    real(dp), intent(in) :: p0(3), p1(3), r, tri(9,ntri), tlo(3,ntri), thi(3,ntri)
     logical,  intent(in) :: signed
-    real(dp) :: clr, d
-    integer  :: it
+    real(dp) :: clr, d, slo(3), shi(3), lb, g
+    integer  :: it, j
+    ! capsule-segment AABB; broad-phase cull below uses the box-box lower bound on
+    ! the seg-triangle distance (exact -- only skips triangles provably farther
+    ! than the running minimum, so the result is identical to the brute loop).
+    slo = min(p0, p1); shi = max(p0, p1)
     d = huge(1.0_dp)
     do it = 1, ntri
+      lb = 0.0_dp
+      do j = 1, 3
+        g = max(0.0_dp, tlo(j,it) - shi(j), slo(j) - thi(j,it))
+        lb = lb + g*g
+      end do
+      if (lb >= d*d) cycle                ! box-box gap already >= best: cannot help
       d = min(d, seg_tri_dist(p0, p1, tri(1:3,it), tri(4:6,it), tri(7:9,it)))
     end do
     if (signed) then
@@ -137,11 +147,22 @@ contains
     integer,  intent(in)  :: na, ntri, nu, nscan, signed
     real(dp), intent(in)  :: acaps(7,na,nu), tri(9,ntri)
     real(dp), intent(out) :: clr(nu)
-    integer  :: i, ia, sstep, ns
+    integer  :: i, ia, sstep, ns, it
     real(dp) :: t, c0(7), f, tbest, fbest, tlo, thi
+    real(dp), allocatable :: trlo(:,:), trhi(:,:)
     logical  :: sgn
 
     sgn = signed /= 0
+    ! precompute per-triangle axis-aligned bounding boxes once for the broad-phase
+    allocate(trlo(3,ntri), trhi(3,ntri))
+    do it = 1, ntri
+      trlo(1,it) = min(tri(1,it), tri(4,it), tri(7,it))
+      trlo(2,it) = min(tri(2,it), tri(5,it), tri(8,it))
+      trlo(3,it) = min(tri(3,it), tri(6,it), tri(9,it))
+      trhi(1,it) = max(tri(1,it), tri(4,it), tri(7,it))
+      trhi(2,it) = max(tri(2,it), tri(5,it), tri(8,it))
+      trhi(3,it) = max(tri(3,it), tri(6,it), tri(9,it))
+    end do
     ns = max(1, nscan)
     do i = 1, nu - 1
       clr(i) = huge(1.0_dp)
@@ -151,7 +172,7 @@ contains
         do sstep = 0, ns
           t = real(sstep, dp) / real(ns, dp)
           c0 = (1.0_dp - t)*acaps(:,ia,i) + t*acaps(:,ia,i+1)
-          f = cap_mesh_clr(c0(1:3), c0(4:6), c0(7), tri, ntri, sgn)
+          f = cap_mesh_clr(c0(1:3), c0(4:6), c0(7), tri, trlo, trhi, ntri, sgn)
           if (f < fbest) then; fbest = f; tbest = t; end if
         end do
         ! ... then golden-section refine in the bracketing interval, identical to
@@ -160,7 +181,8 @@ contains
         ! continuous-motion quantity the point-cloud check does, not a coarser one)
         tlo = max(0.0_dp, tbest - 1.0_dp/real(ns, dp))
         thi = min(1.0_dp, tbest + 1.0_dp/real(ns, dp))
-        call golden_min_mesh(acaps(:,ia,i), acaps(:,ia,i+1), tri, ntri, sgn, tlo, thi, f)
+        call golden_min_mesh(acaps(:,ia,i), acaps(:,ia,i+1), tri, trlo, trhi, ntri, &
+                             sgn, tlo, thi, f)
         fbest = min(fbest, f)
         if (fbest < clr(i)) clr(i) = fbest
       end do
@@ -168,37 +190,40 @@ contains
     ! final station: static
     clr(nu) = huge(1.0_dp)
     do ia = 1, na
-      f = cap_mesh_clr(acaps(1:3,ia,nu), acaps(4:6,ia,nu), acaps(7,ia,nu), tri, ntri, sgn)
+      f = cap_mesh_clr(acaps(1:3,ia,nu), acaps(4:6,ia,nu), acaps(7,ia,nu), tri, &
+                       trlo, trhi, ntri, sgn)
       if (f < clr(nu)) clr(nu) = f
     end do
+    deallocate(trlo, trhi)
   end subroutine mesh_clearance
 
   !> Clearance of the linearly-interpolated capsule (endpoints ca,cb at t=0,1) to
   !> the mesh at parameter t.
-  pure function cap_seg_mesh_clr(ca, cb, t, tri, ntri, signed) result(f)
+  pure function cap_seg_mesh_clr(ca, cb, t, tri, tlo, thi, ntri, signed) result(f)
     integer,  intent(in) :: ntri
-    real(dp), intent(in) :: ca(7), cb(7), t, tri(9,ntri)
+    real(dp), intent(in) :: ca(7), cb(7), t, tri(9,ntri), tlo(3,ntri), thi(3,ntri)
     logical,  intent(in) :: signed
     real(dp) :: f, c0(7)
     c0 = (1.0_dp - t)*ca + t*cb
-    f = cap_mesh_clr(c0(1:3), c0(4:6), c0(7), tri, ntri, signed)
+    f = cap_mesh_clr(c0(1:3), c0(4:6), c0(7), tri, tlo, thi, ntri, signed)
   end function cap_seg_mesh_clr
 
   !> Golden-section minimisation of the capsule-to-mesh clearance over t in
-  !> [tlo,thi] (locally unimodal over one short segment); mirrors golden_min in
+  !> [blo,bhi] (locally unimodal over one short segment); mirrors golden_min in
   !> collision.f90 so the mesh and obstacle-cloud checks share the same fidelity.
-  subroutine golden_min_mesh(ca, cb, tri, ntri, signed, tlo, thi, fmin)
+  subroutine golden_min_mesh(ca, cb, tri, tlo, thi, ntri, signed, blo, bhi, fmin)
     integer,  intent(in)  :: ntri
-    real(dp), intent(in)  :: ca(7), cb(7), tri(9,ntri), tlo, thi
+    real(dp), intent(in)  :: ca(7), cb(7), tri(9,ntri), tlo(3,ntri), thi(3,ntri)
+    real(dp), intent(in)  :: blo, bhi
     logical,  intent(in)  :: signed
     real(dp), intent(out) :: fmin
     real(dp), parameter :: gr = 0.6180339887498949_dp
     real(dp) :: a, b, c, d, fc, fd
     integer  :: it
-    a = tlo; b = thi
+    a = blo; b = bhi
     c = b - gr*(b - a); d = a + gr*(b - a)
-    fc = cap_seg_mesh_clr(ca, cb, c, tri, ntri, signed)
-    fd = cap_seg_mesh_clr(ca, cb, d, tri, ntri, signed)
+    fc = cap_seg_mesh_clr(ca, cb, c, tri, tlo, thi, ntri, signed)
+    fd = cap_seg_mesh_clr(ca, cb, d, tri, tlo, thi, ntri, signed)
     ! 16 golden steps shrink the bracket by 0.618^16 ~ 4e-4 of one station gap --
     ! far below the cut tolerance, and the mesh has many triangles per pose so the
     ! iteration count is the dominant cost.
@@ -206,11 +231,11 @@ contains
       if (fc < fd) then
         b = d; d = c; fd = fc
         c = b - gr*(b - a)
-        fc = cap_seg_mesh_clr(ca, cb, c, tri, ntri, signed)
+        fc = cap_seg_mesh_clr(ca, cb, c, tri, tlo, thi, ntri, signed)
       else
         a = c; c = d; fc = fd
         d = a + gr*(b - a)
-        fd = cap_seg_mesh_clr(ca, cb, d, tri, ntri, signed)
+        fd = cap_seg_mesh_clr(ca, cb, d, tri, tlo, thi, ntri, signed)
       end if
     end do
     fmin = min(fc, fd)
