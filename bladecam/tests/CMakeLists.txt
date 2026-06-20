@@ -148,6 +148,12 @@ if(PYTHON3)
   set_tests_properties(machine PROPERTIES ENVIRONMENT
     "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
 
+  # Native-CAD feature recognition (splitters, fillet exclusion, fillet trim)
+  add_test(NAME features
+           COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_features.py)
+  set_tests_properties(features PROPERTIES ENVIRONMENT
+    "PYTHONPATH=${CMAKE_SOURCE_DIR}/python;BLADECAM_LIB=$<TARGET_FILE:bladecam>")
+
   # Mechanistic cutting-force model (helix lag, calibration, material library)
   add_test(NAME cutting_force
            COMMAND ${PYTHON3} ${CMAKE_SOURCE_DIR}/tests/test_cutting_force.py)

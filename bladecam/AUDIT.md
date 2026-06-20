@@ -222,8 +222,21 @@ For each angle: the question, the techniques, and BladeCAM-specific targets.
   ruling-direction tie-break is deterministic; orientation normalised hub-first /
   low-Z-first across faces. Blisk: one rail pair per blade. Fuzz with new shape
   families (sphere/torus/open shells) — must degrade gracefully, never crash.
+- **Feature recognition (`features.py`):** splitter blades classified from
+  streamwise length (largest-significant-gap split; uniform set → all main; the
+  short blade IS the splitter). Root fillets/blends recognised by radius of
+  curvature — analytic (cylinder/torus/sphere via OCP isinstance) or sampled-grid
+  Menger curvature; oracle recovers a known fillet radius (≈3 mm), flags a tight
+  blend, clears a gentle flank, ∞ on a flat patch; ruled flanks have lower
+  characteristic curvature than blends. Fillet-aware trim moves the HUB rail up
+  the ruling by the offset (shroud unchanged, clamped, never inverted), wired to
+  `pipeline.root_fillet_r` (shortens the machined rulings). End-to-end: a STEP
+  blisk of 2 main + 1 splitter + a cylinder fillet face → fillet excluded, 3
+  flanks kept, classified 2 main + 1 splitter. Mutation: always-split / inverted
+  curvature / trim-shroud — all killed.
 - Targets: `cadio.py` (`_rails_from_face*`, `_orient_hub_first`,
-  `rails_from_all_faces`, `_sample_edge`).
+  `rails_from_all_faces`, `_face_min_radius`, `blades_from_cad`), `features.py`,
+  `pipeline.py` (`_blade_rails` trim).
 
 ## 4. Module-by-module sweep (don't skip any)
 
