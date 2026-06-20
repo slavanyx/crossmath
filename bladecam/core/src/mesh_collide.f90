@@ -131,18 +131,29 @@ contains
     real(dp), intent(in)  :: acaps(7,na,nu), tri(9,ntri)
     real(dp), intent(out) :: clr(nu)
     integer  :: i, ia, sstep, ns
-    real(dp) :: t, c0(7), f
+    real(dp) :: t, c0(7), f, tbest, fbest, tlo, thi
 
     ns = max(1, nscan)
     do i = 1, nu - 1
       clr(i) = huge(1.0_dp)
       do ia = 1, na
+        ! coarse scan for the worst (min-clearance) time over the segment ...
+        tbest = 0.0_dp; fbest = huge(1.0_dp)
         do sstep = 0, ns
           t = real(sstep, dp) / real(ns, dp)
           c0 = (1.0_dp - t)*acaps(:,ia,i) + t*acaps(:,ia,i+1)
           f = cap_mesh_clr(c0(1:3), c0(4:6), c0(7), tri, ntri)
-          if (f < clr(i)) clr(i) = f
+          if (f < fbest) then; fbest = f; tbest = t; end if
         end do
+        ! ... then golden-section refine in the bracketing interval, identical to
+        ! the obstacle-cloud swept_clearance, so a fixture collision that dips
+        ! BETWEEN scan samples is not missed (the mesh check must verify the same
+        ! continuous-motion quantity the point-cloud check does, not a coarser one)
+        tlo = max(0.0_dp, tbest - 1.0_dp/real(ns, dp))
+        thi = min(1.0_dp, tbest + 1.0_dp/real(ns, dp))
+        call golden_min_mesh(acaps(:,ia,i), acaps(:,ia,i+1), tri, ntri, tlo, thi, f)
+        fbest = min(fbest, f)
+        if (fbest < clr(i)) clr(i) = fbest
       end do
     end do
     ! final station: static
@@ -152,5 +163,43 @@ contains
       if (f < clr(nu)) clr(nu) = f
     end do
   end subroutine mesh_clearance
+
+  !> Clearance of the linearly-interpolated capsule (endpoints ca,cb at t=0,1) to
+  !> the mesh at parameter t.
+  pure function cap_seg_mesh_clr(ca, cb, t, tri, ntri) result(f)
+    integer,  intent(in) :: ntri
+    real(dp), intent(in) :: ca(7), cb(7), t, tri(9,ntri)
+    real(dp) :: f, c0(7)
+    c0 = (1.0_dp - t)*ca + t*cb
+    f = cap_mesh_clr(c0(1:3), c0(4:6), c0(7), tri, ntri)
+  end function cap_seg_mesh_clr
+
+  !> Golden-section minimisation of the capsule-to-mesh clearance over t in
+  !> [tlo,thi] (locally unimodal over one short segment); mirrors golden_min in
+  !> collision.f90 so the mesh and obstacle-cloud checks share the same fidelity.
+  subroutine golden_min_mesh(ca, cb, tri, ntri, tlo, thi, fmin)
+    integer,  intent(in)  :: ntri
+    real(dp), intent(in)  :: ca(7), cb(7), tri(9,ntri), tlo, thi
+    real(dp), intent(out) :: fmin
+    real(dp), parameter :: gr = 0.6180339887498949_dp
+    real(dp) :: a, b, c, d, fc, fd
+    integer  :: it
+    a = tlo; b = thi
+    c = b - gr*(b - a); d = a + gr*(b - a)
+    fc = cap_seg_mesh_clr(ca, cb, c, tri, ntri)
+    fd = cap_seg_mesh_clr(ca, cb, d, tri, ntri)
+    do it = 1, 30
+      if (fc < fd) then
+        b = d; d = c; fd = fc
+        c = b - gr*(b - a)
+        fc = cap_seg_mesh_clr(ca, cb, c, tri, ntri)
+      else
+        a = c; c = d; fc = fd
+        d = a + gr*(b - a)
+        fd = cap_seg_mesh_clr(ca, cb, d, tri, ntri)
+      end if
+    end do
+    fmin = min(fc, fd)
+  end subroutine golden_min_mesh
 
 end module mesh_collide_mod
