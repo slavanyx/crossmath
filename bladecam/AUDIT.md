@@ -462,15 +462,33 @@ RESOLVED (verify they haven't regressed; don't re-report as new):
   (~40 µm vs ~1400), not the misleading per-ruling residual.
 - roughing engagement hidden clamp (§T): ae>2R now flagged (engagement_feasible),
   not silently posted as a 180° slot.
+- JOINT-SPACE swept collision (#1+#8): every swept check (assembly/holder/struct/
+  mesh) now runs on the FK of the linearly-interpolated joints — the path the
+  machine TRULY traverses — densified with a substep count that bounds the chord-
+  vs-arc residual (uniform conservative advancement). Replaces the part-frame
+  chord lerp that cleared real rotary-arc collisions. Oracle: the crash gauntlet
+  (G1/G2) vs a dense-FK ground truth.
+- Swept holder-vs-cut-blade (#4): was per-station; now swept+refined over the
+  motion (gauntlet G4 — a holder translating into the blade between stations).
+- Hub/shroud endwalls (#3): the rotating disk + outer band, modelled as the
+  surfaces of revolution of the hub/shroud rails, are now collision obstacles for
+  the holder+spindle (reported as hub_clearance); gauntlet G3 catches a deep
+  stubby tool diving into the hub.
 
 OPEN (real residual limitations — state honestly, improve if in scope):
 - TOPP at an exact velocity cusp: bounded but ~1.75× amax at the singular grid
   station (discretization).
-- Holder-vs-current-blade check is per-station while the assembly/neighbour and
-  fixture checks are swept; audit whether a between-station holder swing can slip.
-- Structural collision is tool-assembly + table/fixture, NOT a full kinematic
-  machine model (no ram/column/trunnion link geometry); table frame assumes
-  table-table A-C (wrong for head-head kind=1 — verify or guard).
+- Approach / retract / pass-linking moves are not collision-checked — only the
+  station-to-station cutting path is (a common real-world crash source; build a
+  swept check over the entry/exit/link trajectories next).
+- Obstacles are point clouds (neighbour flanks, revolved endwalls); a tool
+  thinner than the sample spacing could thread between surface points (#2,
+  obstacle-side discretization — bound the spacing to < tool radius or use a
+  mesh/SDF). The endwall spacing IS bounded < holder radius; the neighbour-flank
+  sampling is the viz grid (verify it is fine enough for the tool radius).
+- Structural collision is tool-assembly + table/fixture/hub/shroud, NOT a full
+  kinematic machine model (no ram/column/spindle-housing link geometry); table
+  frame assumes table-table A-C (wrong for head-head kind=1 — verify or guard).
 - Mechanistic force coefficients (Kt/Kr/Kte/Kre) are nominal, not measured;
   helix lag is ignored (instantaneous engagement). Treat outputs as indicative.
 - Dexel machined-error-along-normals was dropped (unreliable on coarse normals);
