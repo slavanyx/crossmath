@@ -6,6 +6,7 @@ strategy is a one-line change in PARAM_SPEC / STRATEGIES.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 import numpy as np
 
@@ -242,6 +243,45 @@ class AppModel:
             rails=self.rails,
         )
 
+    # ---- project (.bladecam) snapshot: the complete editable state ----
+    def to_project(self) -> dict:
+        """A self-contained snapshot of the editable state: live parameter
+        values, strategy, the full machine + post configs, the selected preset
+        names, and any loaded CAD rails / FRF embedded inline. Fully determines
+        build_params() and the active post, so a project reopens identically
+        without needing the original CAD file or preset library."""
+        r = self.rails
+        f = self.frf
+        return {
+            "format": "bladecam-project", "version": 1,
+            "strategy": self.strategy,
+            "values": {k: v for k, v in self.values.items()},
+            "machine": preset_lib.machine_to_dict(self._live_machine()),
+            "post": preset_lib.post_to_dict(self._live_post()),
+            "preset_names": dict(self.preset_names),
+            "rails": (None if r is None else
+                      [np.asarray(r[0]).tolist(), np.asarray(r[1]).tolist()]),
+            "frf": (None if f is None else [np.asarray(x).tolist() for x in f]),
+        }
+
+    def load_project(self, d: dict):
+        """Restore the editable state from a to_project() snapshot."""
+        self.strategy = d.get("strategy", self.strategy)
+        self.values.update(d.get("values", {}))
+        if d.get("machine"):
+            self.machine = preset_lib.machine_from_dict(d["machine"])
+            self.machine_name = self.machine.name
+        if d.get("post"):
+            self.post = preset_lib.post_from_dict(d["post"])
+            self.post_name = self.post.name
+        self.preset_names.update(d.get("preset_names", {}))
+        r = d.get("rails")
+        self.rails = (None if r is None else
+                      (np.ascontiguousarray(r[0], float),
+                       np.ascontiguousarray(r[1], float)))
+        f = d.get("frf")
+        self.frf = None if f is None else tuple(np.asarray(x, float) for x in f)
+
     def compute_current(self) -> dict:
         return compute(self.build_params())
 
@@ -266,3 +306,22 @@ class AppModel:
                           jerk=float(r["orient_jerk"]),
                           cycle_s=float(r["cycle_time_s"]))
         return out
+
+
+# --- project (.bladecam) file IO ---------------------------------------------
+def save_project(path: str, model: "AppModel") -> dict:
+    """Write the model's complete editable state to a .bladecam project file."""
+    d = model.to_project()
+    with open(path, "w") as fh:
+        json.dump(d, fh, indent=2)
+    return d
+
+
+def load_project(path: str, model: "AppModel") -> dict:
+    """Load a .bladecam project file into `model` and return the project dict."""
+    with open(path) as fh:
+        d = json.load(fh)
+    if d.get("format") != "bladecam-project":
+        raise ValueError("not a BladeCAM project file")
+    model.load_project(d)
+    return d

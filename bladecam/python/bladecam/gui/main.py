@@ -67,6 +67,9 @@ class MainWindow(QtWidgets.QMainWindow):
         mb = self.menuBar()
         # --- File: import / blade source / export ---
         filem = mb.addMenu("&File")
+        self._act(filem, "Open project…", self.open_project, "Ctrl+O")
+        self._act(filem, "Save project…", self.save_project, "Ctrl+S")
+        filem.addSeparator()
         self._act(filem, "Import rails CSV…", self.import_rails)
         self._act(filem, "Load blade from STEP/IGES…", self.load_blade_cad)
         self._act(filem, "Load blisk (all blades)…", self.load_blisk)
@@ -368,6 +371,32 @@ class MainWindow(QtWidgets.QMainWindow):
             upd[fn] = (editors[fn][0].value(), editors[fn][1].value())
         self.model.machine = replace(m, **upd)
         self.recompute(compare=True)
+
+    def save_project(self):
+        """Save the whole job (params, machine, post, blade/CAD rails) to a
+        single self-contained .bladecam project file."""
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save project", "job.bladecam", "BladeCAM project (*.bladecam)")
+        if fn:
+            from . import model as model_mod
+            model_mod.save_project(fn, self.model)
+            self.status.showMessage(f"project saved -> {fn}")
+
+    def open_project(self):
+        """Open a .bladecam project, restore the full editable state, refresh the
+        editors/preset combos and recompute."""
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Open project", "", "BladeCAM project (*.bladecam)")
+        if not fn:
+            return
+        from . import model as model_mod
+        model_mod.load_project(fn, self.model)
+        self._sync_editors()                 # push restored values into the spinboxes
+        for kind, cb in self.preset_cbs.items():
+            cb.setCurrentText(self.model.preset_names.get(kind, cb.currentText()))
+        self._refresh_dirty()
+        self.recompute(compare=True)
+        self.status.showMessage(f"project loaded <- {fn}")
 
     def edit_post(self):
         """Certified-post editor: control dialect, axis letters/signs, limits and
