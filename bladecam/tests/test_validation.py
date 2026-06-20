@@ -98,7 +98,7 @@ def test_topp_handles_cusp():
 
     def accel_ratio(qq, vmax, amax):
         n = qq.shape[0]; ds = 1.0 / (n - 1)
-        aprof, _ = core.topp(qq, vmax, amax)
+        aprof, T = core.topp(qq, vmax, amax)
         qp = np.gradient(qq, ds, axis=0); qpp = np.gradient(qp, ds, axis=0)
         # midpoint joint acceleration q''*a + q'*sdd over each segment
         r = 0.0
@@ -107,19 +107,26 @@ def test_topp_handles_cusp():
             am = 0.5*(aprof[k]+aprof[k+1])
             qpm = 0.5*(qp[k]+qp[k+1]); qppm = 0.5*(qpp[k]+qpp[k+1])
             r = max(r, np.max(np.abs(qppm*am + qpm*sdd) / amax))
-        return r
+        return r, T
 
     n = 121; s = np.linspace(0, 1, n)
     # realistic: rotary reversal + monotone arc length (what the pipeline emits)
     qq = np.column_stack([0.8*np.sin(2*np.pi*s), np.linspace(0, 50, n)])
-    r1 = accel_ratio(qq, np.array([1.5, 200.]), np.array([5., 1e4]))
-    check(r1 <= 2.0, "TOPP bounds acceleration through a rotary cusp",
-          f"(ratio {r1:.2f}, was ~10x before the fix)")
-    # exact 1-DOF cusp
-    r2 = accel_ratio((2.0*np.sin(np.pi*s)).reshape(n, 1),
-                     np.array([1.0]), np.array([1.0]))
-    check(r2 <= 2.0, "TOPP bounds acceleration through an exact cusp",
+    r1, t1 = accel_ratio(qq, np.array([1.5, 200.]), np.array([5., 1e4]))
+    check(r1 <= 1.1, "TOPP bounds acceleration through a rotary cusp",
+          f"(ratio {r1:.2f}, was ~10x before the station scheme, ~1.75x before midpoint)")
+    # exact 1-DOF cusp -- the midpoint-acceleration formulation realises ~1.0x
+    r2, t2 = accel_ratio((2.0*np.sin(np.pi*s)).reshape(n, 1),
+                         np.array([1.0]), np.array([1.0]))
+    check(r2 <= 1.1, "TOPP bounds acceleration through an exact cusp",
           f"(ratio {r2:.2f})")
+    # ...and the traversal stays a positive, finite time (the profile must not
+    # collapse to a stalled a=0 trajectory at the cusp -- which would post a
+    # bogus zero cycle time and stall the feed). A free swing of a 2-unit-
+    # amplitude arc against unit accel takes O(seconds).
+    check(t1 > 0.5 and np.isfinite(t1) and t2 > 0.5 and np.isfinite(t2),
+          "TOPP keeps a positive finite cycle time through the cusp",
+          f"(t_rot {t1:.2f}s, t_cusp {t2:.2f}s)")
 
 
 def test_topp_small_n():
@@ -144,6 +151,44 @@ def test_topp_small_n():
         aprof, T = core.topp(q, np.array([1., 1.]), np.array([1., 1.]))
         check(np.all(np.isfinite(aprof)) and np.isfinite(T),
               f"TOPP n={n} finite (no OOB)")
+
+
+def test_topp_realizes_its_model():
+    """The TOPP profile must respect the acceleration limit it actually solves:
+    the realised midpoint joint acceleration q''_mid*a_mid + q'_mid*sdd (with the
+    SAME compact centred stencil the solver uses) must be <= amax on EVERY segment
+    of EVERY axis. Verified as a property over many random multi-DOF paths -- this
+    pins the exact linear band in seg_cap (coefficients AND the sign branch for
+    negative-coefficient axes)."""
+    from bladecam import core
+
+    def compact(qq, ds):
+        qp = np.zeros_like(qq); qpp = np.zeros_like(qq)
+        qp[1:-1] = (qq[2:] - qq[:-2]) / (2*ds)
+        qp[0] = (qq[1] - qq[0]) / ds; qp[-1] = (qq[-1] - qq[-2]) / ds
+        qpp[1:-1] = (qq[2:] - 2*qq[1:-1] + qq[:-2]) / ds**2
+        qpp[0] = (qq[2] - 2*qq[1] + qq[0]) / ds**2
+        qpp[-1] = (qq[-1] - 2*qq[-2] + qq[-3]) / ds**2
+        return qp, qpp
+
+    worst = 0.0
+    for seed in range(120):
+        rg = np.random.default_rng(seed)
+        n = 61; s = np.linspace(0, 1, n); dof = int(rg.integers(1, 4))
+        qq = np.zeros((n, dof))
+        for d in range(dof):
+            for h in range(1, 4):
+                qq[:, d] += (rg.uniform(-1, 1)*np.sin(h*np.pi*s)
+                             + rg.uniform(-1, 1)*np.cos(h*np.pi*s))
+        vmax = rg.uniform(0.5, 3, dof); amax = rg.uniform(1, 10, dof)
+        aprof, _ = core.topp(qq, vmax, amax)
+        ds = 1.0/(n-1); qp, qpp = compact(qq, ds)
+        for k in range(n-1):
+            sdd = (aprof[k+1]-aprof[k])/(2*ds); am = 0.5*(aprof[k]+aprof[k+1])
+            qpm = 0.5*(qp[k]+qp[k+1]); qppm = 0.5*(qpp[k]+qpp[k+1])
+            worst = max(worst, np.max(np.abs(qppm*am + qpm*sdd)/amax))
+    check(worst <= 1.001, "TOPP realises its own acceleration model on every "
+          "segment (random multi-DOF paths)", f"(worst ratio {worst:.4f})")
 
 
 def test_chatter_matches_closed_form():
@@ -217,6 +262,7 @@ def main():
                test_global_beats_naive_floor,
                test_topp_respects_limits,
                test_topp_handles_cusp,
+               test_topp_realizes_its_model,
                test_topp_small_n,
                test_chatter_matches_closed_form,
                test_swept_penalty_finite_flute):
