@@ -502,9 +502,13 @@ OPEN (real residual limitations — state honestly, improve if in scope):
   sub-moves. The imported-fixture mesh is checked as a closed solid (signed); the
   neighbour flanks + table are exact unsigned meshes; the hub/shroud endwalls
   remain point clouds (spacing bounded < holder radius).
-- Structural collision is tool-assembly + table/fixture/hub/shroud, NOT a full
-  kinematic machine model (no ram/column/spindle-housing link geometry); table
-  frame assumes table-table A-C (wrong for head-head kind=1 — verify or guard).
+- Head-head (kind=1) VERIFIED: IK/FK round-trip exact (1e-16); structure_capsules
+  places the cradle/column static for kind=1 (workpiece fixed) and rotated for
+  kind=0 -- correct. The machine spindle HEAD/housing (Machine.spindle_dia/len,
+  previously defined but unused) is now a body coaxial with the tool axis in the
+  assembly stack, so it tilts with the part (kind=0) or the head (kind=1) and is
+  checked against every obstacle (gauntlet G9). Remaining: the ram/column ABOVE
+  the head and the full link kinematics are still capsule-approximate, not solid.
 - Mechanistic force coefficients (Kt/Kr/Kte/Kre) are nominal, not measured;
   helix lag is ignored (instantaneous engagement). Treat outputs as indicative.
 - Dexel machined-error-along-normals was dropped (unreliable on coarse normals);

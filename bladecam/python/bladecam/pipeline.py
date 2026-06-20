@@ -378,6 +378,19 @@ def compute(p: Params) -> dict:
     seg_R = np.array([p.R, pr.holder_dia*0.5, pr.spindle_dia*0.5])
     seg_lo = np.array([0.0, hbase, sbase])
     seg_hi = np.array([pr.flute_len, hbase + pr.holder_len, sbase + pr.spindle_len])
+    # MACHINE spindle HOUSING / head body (full-machine collision): a cylinder
+    # from the machine profile, coaxial with the tool above the holder/spindle. It
+    # tilts with the tool axis (alpha) in the part frame -- correct for table-table
+    # (the part tilts) AND head-head (the head tilts), since the tool-axis
+    # direction in the part frame is alpha either way. Closes the previously
+    # unused Machine.spindle_dia/len: the head was modelled nowhere, so a tilted
+    # head diving toward the table/part went unchecked (worst on head-head).
+    m_hd = getattr(p.machine, "spindle_dia", 0.0)
+    if m_hd > 0.0:
+        h_lo = sbase + pr.spindle_len
+        seg_R = np.append(seg_R, 0.5 * m_hd)
+        seg_lo = np.append(seg_lo, h_lo)
+        seg_hi = np.append(seg_hi, h_lo + p.machine.spindle_len)
     plane_pt = None if p.fixture_z is None else np.array([0.0, 0.0, p.fixture_z])
     plane_n = np.array([0.0, 0.0, 1.0])
     nscan_c = max(4, 2 * p.collision_substeps)
