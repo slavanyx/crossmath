@@ -308,10 +308,15 @@ the seams, not just the boxes. Concrete scenarios (in `test_integration.py`):
   gap and no double-cut. Ties `trim_root_fillet` ↔ `fillet_finish`.
 - **geometry → optimise → envelope scale invariance:** scaling the blade and the
   cutter by s scales the machined-surface error by s.
-- More seams to add: stock dexel surface ↔ `swept_surface` envelope agreement;
-  machine swap ↔ reachability ↔ post `certify` consistency; barrel tool identical
-  across optimiser/devfield/swept/dexel/render; A/C `unwrap` ↔ rotary-range
-  reachability ↔ winding alarm.
+- **stock ↔ envelope:** the dexel-carved machined surface and the `swept_surface`
+  envelope (two independent computations) agree on the machined surface.
+- **machine swap ↔ reachability ↔ certify:** a tiny machine flags the SAME axes
+  in `reachability` and in the post `certify` report (both use one envelope
+  check); mutation: certify ignoring the machine override — killed.
+- **A/C unwrap ↔ winding:** the pipeline unwrap keeps per-block rotary steps
+  small (no 2π jump) and the certify winding metric equals the actual max step.
+- **barrel across stages:** a point ON the barrel surface reads ~0 in
+  `deviation_barrel` AND `swept_deviation` (same tool model everywhere).
 - Targets: the whole `pipeline.compute` assembly + `post.py` + `features.py`.
 
 ### R. Real-time interaction & GUI performance (responsiveness, thread safety)

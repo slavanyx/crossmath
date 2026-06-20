@@ -18,7 +18,7 @@ import math
 
 try:
     import numpy as np
-    from bladecam import core, post, features
+    from bladecam import core, post, features, machine as ml
     from bladecam.pipeline import compute, fillet_machining, Params
 except ImportError as e:
     print(f"SKIP integration ({e})")
@@ -116,6 +116,56 @@ def main():
               f"(ratio {ratio:.3f} vs {s})")
     else:
         check(big["swept_overcut"] < 1e-6, "developable case stays ~0 at both scales")
+
+    # 5) STOCK dexel surface <-> swept_surface envelope: two INDEPENDENT machined-
+    #    surface computations (ray/cylinder carving vs envelope projection) must
+    #    place the machined surface in the same place for a cylinder tool.
+    R = 5.0; Lf = np.array([20.0]); q0 = np.array([[0., 0, 0]]); al = np.array([[0., 0, 1.]])
+    gap = 3.0; th = np.linspace(0, 2 * np.pi, 16, endpoint=False)
+    P = np.column_stack([(R + gap) * np.cos(th), (R + gap) * np.sin(th), np.full(16, 10.0)])
+    mp = core.swept_surface(q0, al, Lf, R, P)
+    rad = np.hypot(mp[:, 0], mp[:, 1])
+    dvec = -P / np.linalg.norm(P, axis=1, keepdims=True); dvec[:, 2] = 0
+    dvec /= np.linalg.norm(dvec, axis=1, keepdims=True)
+    _, fc = core.dexel_carve(q0, al, R, Lf, P, dvec, np.full(16, gap + 2 * R))
+    check(np.allclose(rad, R, atol=1e-2) and np.allclose(fc, gap, atol=1e-2),
+          "dexel carve and swept_surface agree on the machined surface")
+
+    # 6) MACHINE swap <-> reachability <-> post certify: both use the SAME envelope
+    #    check, so a tiny machine must flag the SAME axes in reachability and in
+    #    the certification report.
+    tiny = ml.Machine(name="tiny", x_range=(-5, 5), y_range=(-5, 5),
+                      z_range=(-5, 5), a_range=(-0.2, 0.2))
+    viol = ml.reachability(tiny, r["machine_path"])
+    rep = post.certify(post.PostConfig(), r["machine_path"], r["contact"], p.pivot,
+                       r["feed_cap_mm_min"], r["move_times_s"], machine=tiny)
+    cert_axes = set(rep["travel_violations"]) | set(rep["rotary_violations"])
+    check(len(viol) > 0 and set(viol) == cert_axes and not rep["certified"],
+          "machine swap: reachability & post-certify flag the same axes",
+          f"({sorted(viol)})")
+
+    # 7) A/C UNWRAP <-> winding alarm: the pipeline unwraps the rotary axes, so the
+    #    posted per-block rotary step is small (no spurious 2pi jump), and the
+    #    certify winding metric equals the actual max step.
+    m = r["machine_path"]
+    step_deg = float(np.degrees(np.abs(np.diff(m[:, 3:5], axis=0))).max())
+    rep2 = post.certify(post.PostConfig(), m, r["contact"], p.pivot,
+                        r["feed_cap_mm_min"], r["move_times_s"])
+    check(step_deg < 90.0 and abs(rep2["max_rotary_step_deg"] - step_deg) < 1e-6,
+          "A/C unwrap keeps rotary steps small; certify winding == the max step",
+          f"({step_deg:.1f}°)")
+
+    # 8) BARREL tool identical across stages: a point ON the barrel surface reads
+    #    ~0 in deviation_barrel AND swept_deviation (same tool model everywhere).
+    Rb, lamc = 200.0, 12.0; lam = 8.0
+    perp = R - Rb + np.sqrt(Rb**2 - (lam - lamc) ** 2)
+    Pb = np.array([[perp, 0.0, lam]])
+    g1 = core.deviation_barrel(np.array([0., 0, 0]), np.array([0., 0, 1.]), R, Rb, lamc, Pb)[0]
+    g2 = core.swept_deviation(np.array([[0., 0, 0]]), np.array([[0., 0, 1.]]),
+                              np.array([20.0]), R, Pb, Rb=Rb, lamc=lamc)[0]
+    check(abs(g1) < 1e-6 and abs(g2) < 1e-6,
+          "barrel surface point reads ~0 in deviation_barrel AND swept_deviation",
+          f"({g1:.1e}, {g2:.1e})")
 
     if FAILED:
         print(f"\nFAILED: {FAILED}")
