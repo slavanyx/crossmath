@@ -6,7 +6,8 @@ import sys
 
 try:
     import numpy as np
-    from bladecam.gui.model import AppModel, STRATEGIES, PARAM_SPEC, MACHINE_SPEC
+    from bladecam.gui.model import (AppModel, STRATEGIES, PARAM_SPEC,
+                                    TOOL_SPEC, MACHINE_SPEC)
     from bladecam.gui import charts
     from bladecam import pipeline, core
 except ImportError as e:
@@ -25,9 +26,22 @@ def check(c, name):
 def main():
     m = AppModel()
 
-    # every auto-generated editor maps to a real model value
-    check(all(spec[0] in m.values for spec in PARAM_SPEC + MACHINE_SPEC),
+    # every auto-generated editor (incl. the full tool/cutting set) maps to a
+    # real model value -- so every config parameter is GUI-editable
+    check(all(spec[0] in m.values for spec in PARAM_SPEC + TOOL_SPEC + MACHINE_SPEC),
           "all parameter editors map to model values")
+    # every ProcessParams field is exposed as a tool editor (no hidden tool config)
+    import dataclasses
+    from bladecam.process import ProcessParams
+    tool_keys = {s[0] for s in TOOL_SPEC}
+    pp_fields = {f.name for f in dataclasses.fields(ProcessParams)}
+    check(pp_fields <= tool_keys,
+          f"every ProcessParams field has a GUI editor (missing {pp_fields - tool_keys})")
+    # tool edits flow into the built ProcessParams
+    m.values["fz"] = 0.077; m.values["ap"] = 6.5
+    p = m.build_params()
+    check(p.process.fz == 0.077 and p.process.ap == 6.5,
+          "tool editors flow into Params.process")
 
     # every strategy is reachable via the model
     good = True
