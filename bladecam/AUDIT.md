@@ -525,8 +525,15 @@ OPEN (real residual limitations — state honestly, improve if in scope):
   assembly stack, so it tilts with the part (kind=0) or the head (kind=1) and is
   checked against every obstacle (gauntlet G9). Remaining: the ram/column ABOVE
   the head and the full link kinematics are still capsule-approximate, not solid.
-- Dexel machined-error-along-normals was dropped (unreliable on coarse normals);
-  only removed_volume is trusted. Z-dexel volume is Cavalieri (single direction).
+- Dexel scope RE-VERIFIED correct: the finish machined-surface error is the SWEPT
+  ENVELOPE (swept_deviation = closest-point distance to the swept cutter, which is
+  the surface-NORMAL error and is normal-exact), not the dexel. A single-direction
+  (Z) dexel amplifies the normal error by 1/cosθ on steep flanks, so dexel-error-
+  along-normals was correctly dropped -- the envelope supersedes it; a reliable
+  dexel surface error would need a tri-dexel (X/Y/Z), redundant here. The dexel's
+  trusted job is VOLUME / rest-material: verified against analytic πR²Lf to
+  <0.3% with grid convergence (0.24%→0.05% as n: 40→320; boundary discretization,
+  oscillating about truth, not a systematic bias).
 - Default tight blisk (n_blades=11) is not collision-free; barrel is verify+opt
   but the per-station devfield uses the barrel only for the global strategy.
 - swept_clearance "hit slack" mutation survives (provably benign via the hi>lo
