@@ -134,6 +134,25 @@ def main():
     check(ct < 0, "tilted per-segment assembly dips below the fixture plane",
           f"({ct:.2f})")
 
+    # the half-space plane clearance is concave over a normalize-lerp segment (see
+    # the proof in collision.f90), so its swept minimum is at an endpoint:
+    # refining the time sampling must NOT lower it. Oracle that the endpoint check
+    # is exact, not a shortcut (audit §T).
+    q0s = np.array([[0., 0, 2.], [0., 0, 2.]])
+    asw0 = np.array([0.20, 0, 0.98]); asw0 /= np.linalg.norm(asw0)
+    asw1 = np.array([0.95, 0, 0.31]); asw1 /= np.linalg.norm(asw1)
+    alsw = np.array([asw0, asw1])
+    bandR = np.array([1.5]); bandLo = np.array([10.]); bandHi = np.array([30.])
+    farpt = np.array([[1000., 0, 1000.]])
+    pp = np.array([0., 0, 0.]); pn = np.array([0., 0, 1.])
+    coarse = core.assembly_clearance(q0s, alsw, bandR, bandLo, bandHi, farpt,
+                                     plane_pt=pp, plane_n=pn, nscan=2).min()
+    fine = core.assembly_clearance(q0s, alsw, bandR, bandLo, bandHi, farpt,
+                                   plane_pt=pp, plane_n=pn, nscan=64).min()
+    check(abs(coarse - fine) < 1e-9,
+          "half-space plane clearance is endpoint-exact (refine doesn't lower it)",
+          f"(coarse {coarse:.4f} == fine {fine:.4f})")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)

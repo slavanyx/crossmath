@@ -37,6 +37,28 @@ the first clean area. A pass is finished only when the §6 exit criteria hold.
 6. **Every finding is not done until it has a mutation-verified regression
    test.** Write the test, confirm it FAILS on the unfixed code (revert the fix
    or mutate the constant), then fix and confirm it passes.
+7. **Constrain/verify the REALIZED quantity, discretized like the machine
+   moves — and identically across every check.** A surprising family of bugs is
+   the *discretization seam*: the code bounds or measures a sampled proxy that
+   the machine never realizes. Three shapes of it, all found here:
+   (a) **Wrong stencil.** TOPP bounded the *central-difference* axis slope at a
+   station, but between two stations the machine traverses a straight joint
+   segment whose slope is the *forward difference* — at a curvature kink that is
+   larger, so the posted C-axis ran 0.63 rad/s on a 0.6 rad/s table. Fix: bound
+   the forward-difference segment slope (the realized one). Rule: derivatives in
+   a constraint must use the stencil of the motion the machine performs (segment
+   midpoints for acceleration, segment forward-differences for velocity), not the
+   convenient station-centred one.
+   (b) **Between-sample blindness.** A constraint enforced only at sample points
+   says nothing between them unless you bound it there — golden-section refine,
+   midpoint enforcement, or a provable interpolation bound.
+   (c) **Inconsistent fidelity for the same quantity.** Two checks of the *same*
+   physical thing must use the *same* fidelity: the fixture-mesh clearance did a
+   coarse scan while the obstacle-cloud clearance scanned *and refined*, so the
+   mesh check silently verified a coarser quantity. Fix: share the refinement.
+   Operationally, for every constraint/metric ask: *what continuous quantity does
+   the machine realize, how is it discretized here, does that match the motion,
+   and does every other check of it use the same discretization?*
 
 ## 2. Rules of engagement (per finding)
 
@@ -351,6 +373,45 @@ the seams, not just the boxes. Concrete scenarios (in `test_integration.py`):
 - Targets: `post.py` (decimals), `topp.f90` (feasibility), `flank_opt.f90`
   (convergence), `stock.py`/`dexel.f90` (grid), `verify.py`.
 
+### T. Realized-quantity & discretization-consistency (the proxy-sample seam)
+- **Per constraint/metric, fill the four-column table** (operating principle 7):
+  | quantity | what the MACHINE realizes (continuous) | how the code discretizes it | match? |
+  Flag any row where the discretization is not the motion's own stencil, leaves
+  the between-sample value unbounded, or differs from another check of the same
+  quantity.
+- **Stencil targets:** `topp.f90` velocity limit (forward-difference SEGMENT
+  slope — the straight joint move; FIXED) vs acceleration limit (segment
+  MIDPOINT — the realized accel; already correct); `post.py` rotary-speed check
+  (`|ΔA|/move_time`, the same forward difference — must agree with what TOPP
+  bounds, oracle: posted speed ≤ v_rot, now 0.600 on a 0.6 table).
+- **Between-sample targets:** a swept check of a NON-concave quantity (distance
+  to a point/triangle) must bound the worst time, not sample it —
+  `collision.f90 swept_clearance`, `struct_machine.f90 struct_clearance`, and
+  `mesh_collide.f90 mesh_clearance` all do coarse-scan + golden-section refine
+  (mesh FIXED to match; the others already did). The per-station
+  `holder_clearance` is the known exception (watch-list). NOT every check needs
+  sweeping: the fixture HALF-SPACE term in `assembly_clearance` is endpoint-exact
+  and was kept simple — proof: the half-space clearance q0·n + L(ah·n) −
+  R√(1−(ah·n)²) is concave over a normalize-lerp segment (q0 linear; the short
+  great-circle arc makes ah·n bulge up; −R√(…) rises with ah·n), so its min is at
+  an endpoint. Don't add a swept loop where concavity already guarantees it (the
+  oracle is a refine-invariance test, not a golden search). Surface-error fields
+  (`dev`, `devfield`, `swept_field`) are sampled on the `nu×nv` grid —
+  interference strictly between grid lines is not a sample; the grid is the bound.
+- **Same-quantity-same-fidelity targets:** mesh vs obstacle-cloud clearance
+  (FIXED); barrel/cone/cylinder deviation used identically in the optimiser
+  objective, the reported `dev`, and the swept metric (principle 5/§N).
+- **Hidden-clamp targets (a clamp that turns an infeasible input into a
+  valid-looking output):** `roughing.py` engagement `arccos(clip(1-ae/R,-1,1))`
+  (ae>2R is impossible — now flagged via `engagement_feasible`); `flank_geom.f90`
+  barrel `sqrt(max(d2,0))` (benign: never active for realistic Rb≫flute, but a
+  point past the arc should read material-left, not a clamped radius); any
+  `max(0,·)`/`clip`/`+1e-12` that could swallow a real violation.
+- **Oracle:** differential test the proxy against a fine reference — refine the
+  scan/grid 10× and confirm the metric does not move (if it does, the coarse
+  discretization was the bug); round-trip the posted motion through the machine
+  kinematics and confirm the realized velocities/accels are within limits.
+
 ## 4. Module-by-module sweep (don't skip any)
 
 Core (`core/src`): `vec3.f90`, `ruled_surface.f90`, `flank_geom.f90`,
@@ -390,6 +451,17 @@ RESOLVED (verify they haven't regressed; don't re-report as new):
   lamc; on-surface reads 0). Barrel-aware optimisation — DONE.
 - TOPP short-path OOB (n<3) — guarded. Two-point degenerate normal — guarded.
 - Per-station vs swept, per-pose vs continuous collision — DONE.
+- TOPP velocity-limit stencil (§T.a): bounded the central-difference station
+  slope; now bounds the forward-difference SEGMENT slope the machine traverses,
+  so posted rotary speed lands at v_rot (0.600 on a 0.6 table), not 0.63.
+- mesh_clearance fidelity (§T.c): coarse-scan only → coarse-scan + golden-section
+  refine, matching obstacle-cloud swept_clearance (oracle: recovers a -1.0 mm
+  interpenetration whose worst time is between scan samples).
+- Multi-objective default (principle 5): swept term on by default (mu=6.0,
+  swept_weight=0.3) — the optimiser minimises the swept envelope it reports
+  (~40 µm vs ~1400), not the misleading per-ruling residual.
+- roughing engagement hidden clamp (§T): ae>2R now flagged (engagement_feasible),
+  not silently posted as a 180° slot.
 
 OPEN (real residual limitations — state honestly, improve if in scope):
 - TOPP at an exact velocity cusp: bounded but ~1.75× amax at the singular grid
