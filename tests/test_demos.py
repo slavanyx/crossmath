@@ -56,6 +56,24 @@ def main():
               "the optimised twisted demo beats the plain-cylinder one",
               f"({r4['swept_overcut']*1000:.0f} vs {r3['swept_overcut']*1000:.0f} µm)")
 
+    # super-complex gallery: every spec must build a finite, machined result on
+    # the richer make_complex_blade geometry (no NaN/crash on hard parts)
+    try:
+        import make_complex_demos as MC
+        from bladecam import blade as _bl
+    except Exception:
+        MC = None
+    if MC is not None:
+        check(len(MC.DEMOS) >= 4, "complex gallery has several parts")
+        for name, blurb, bk, tk, ek in MC.DEMOS:
+            a, b = _bl.make_complex_blade(nu=60, **bk)
+            r = compute(Params(strategy="global", rails=(a, b),
+                               process=ProcessParams(**tk), **ek))
+            check(np.all(np.isfinite(r["q0"])) and np.all(np.isfinite(r["swept_field"]))
+                  and np.isfinite(r["cycle_time_s"]) and r["feed_feasible"],
+                  f"complex {name}: finite, feed-feasible result",
+                  f"(swept {r['swept_overcut']*1000:.0f} µm, cyc {r['cycle_time_s']:.1f} s)")
+
     if FAILED:
         print(f"\nFAILED: {FAILED}")
         sys.exit(1)

@@ -38,3 +38,24 @@ PYTHONPATH=python BLADECAM_LIB=build/core/libbladecam.so \
 
 (Rendering needs the `gui` extras — pyvista; STEP export needs the `cad` extra —
 cadquery-ocp. The script degrades gracefully if either is missing.)
+
+## Super-complex parts (`make_complex_demos.py`)
+
+Five realistic centrifugal / mixed-flow / blisk blades (`blade.make_complex_blade`
+— backsweep, S-warp, lean, mixed-flow radial bulge), each rendered as a **5-stage
+workflow montage** (geometry → positioning → kinematics → feed → verification +
+a summary card) so every step is visualised. See [`cout/SUMMARY.md`](cout/SUMMARY.md).
+
+| part | what it stresses |
+|---|---|
+| 01 mixed-flow | axial→radial sweep with twist — machined well (~80 µm) |
+| 02 backswept | trailing-edge lean (advance ∝ u²) + S-warp |
+| 03 high-twist | strong non-developability; the swept penalty keeps it in check |
+| 04 s-warp turbine | an inflected flank a cylinder **cannot** fit — the verification panel shows where it overcuts (the honest limit; use a barrel/point-mill) |
+| 05 tall leaned | a z-bowed shroud, machined as stacked passes |
+
+```bash
+PYTHONPATH=python BLADECAM_LIB=build/core/libbladecam.so \
+    python3 demos/make_complex_demos.py
+```
+
