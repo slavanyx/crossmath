@@ -21,11 +21,14 @@ from . import machine as machine_lib
 from .process import ProcessParams
 
 
-KINDS = ("machine", "tool", "strategy")
+KINDS = ("machine", "tool", "strategy", "blade")
 
 # fields that make up a "strategy" preset (a subset of pipeline.Params)
 STRATEGY_FIELDS = ("strategy", "R", "nv", "mu", "gamma", "barrel_R", "barrel_pos",
                    "nsweeps", "smooth_window", "swept_weight", "swept_window")
+# fields that make up a "blade"/job preset (the part geometry)
+BLADE_FIELDS = ("nu", "r_hub", "r_shroud", "z_span", "z_offset", "wrap",
+                "twist", "n_blades")
 _MACHINE_RANGE_FIELDS = ("x_range", "y_range", "z_range", "a_range", "c_range")
 
 
@@ -85,8 +88,19 @@ def _builtin_strategies() -> dict:
     }
 
 
+def _builtin_blades() -> dict:
+    base = dict(nu=60, r_hub=30.0, r_shroud=55.0, z_span=20.0, z_offset=8.0,
+                wrap=0.6, twist=0.7, n_blades=11)
+    return {
+        "Default impeller blade": dict(base),
+        "Tall twisted blade": dict(base, z_span=40.0, twist=1.3, wrap=0.9),
+        "Compact blisk blade": dict(base, r_hub=20.0, r_shroud=40.0, z_span=15.0,
+                                    n_blades=17),
+    }
+
+
 _BUILTINS = {"machine": _builtin_machines, "tool": _builtin_tools,
-             "strategy": _builtin_strategies}
+             "strategy": _builtin_strategies, "blade": _builtin_blades}
 
 
 class PresetStore:

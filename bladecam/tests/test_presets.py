@@ -76,6 +76,13 @@ def main():
               "presets drive a finite compute()", f"({r['machine_name']})")
         check(sp["barrel_R"] == 200.0, "barrel strategy preset carries Rb")
 
+        # blade/job preset category
+        check("blade" in presets.KINDS and len(st.names("blade")) >= 3,
+              "blade preset category populated")
+        bp = st.load("blade", "Tall twisted blade")
+        check(set(presets.BLADE_FIELDS) <= set(bp) and bp["twist"] > 1.0,
+              "blade preset carries the part geometry")
+
         # --- bundle export / import (share whole configs) ---
         st.save("tool", "shop tool A", presets.tool_to_dict(ProcessParams(tool_dia=9.0)))
         st.save("strategy", "shop strat A", presets._builtin_strategies()["Min-max accuracy"])
