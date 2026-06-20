@@ -97,6 +97,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._act(opm, "Channel roughing — trochoidal", self.show_trochoidal)
         self._act(opm, "Rest-machining (dexel stock)", self.show_rest_machining)
         self._act(opm, "Edge finishing (point-mill)", self.show_edge_finish)
+        self._act(opm, "Root-fillet finishing (ball-nose)", self.show_fillet_machining)
         opm.addSeparator()
         self._act(opm, "Machined envelope (swept surface)", self.show_envelope)
         self._act(opm, "Minimize swept overcut", self.minimize_swept_overcut)
@@ -1044,6 +1045,36 @@ class MainWindow(QtWidgets.QMainWindow):
             f"EDGE FINISH (point-mill): {ef['n_rows']} rows\n"
             f"  scallop: {ef['scallop']*1000:.1f} µm, "
             f"path {ef['path_len_mm']:.0f} mm")
+
+    def show_fillet_machining(self):
+        """Recognised-fillet finishing: a ball-nose toolpath rolling along the
+        root fillet. Renders the cross-passes and reports the no-gouge margin."""
+        import pyvista as pv
+        from ..pipeline import fillet_machining
+        fm = fillet_machining(self.model.build_params())
+        self.plotter.clear()
+        if self.last is not None:
+            import pyvista as _pv
+            surf = self.last["surf"]
+            g = _pv.StructuredGrid()
+            g.points = surf.reshape(-1, 3)
+            g.dimensions = (surf.shape[1], surf.shape[0], 1)
+            self.plotter.add_mesh(g, color="lightgray", opacity=0.3)
+        C = fm["centers"]
+        for k in range(C.shape[0]):
+            self.plotter.add_mesh(pv.lines_from_points(np.ascontiguousarray(C[k])),
+                                  color="#17becf", line_width=3)
+        for k in range(fm["contacts"].shape[0]):
+            self.plotter.add_mesh(
+                pv.lines_from_points(np.ascontiguousarray(fm["contacts"][k])),
+                color="#bcbd22", line_width=2)
+        self.plotter.reset_camera()
+        self.status.showMessage(
+            f"root-fillet finishing: r_fillet {fm['fillet_r']:.1f} mm, "
+            f"ball R{fm['r_ball']:.1f}, {fm['n_passes']} passes, "
+            f"path {fm['path_len_mm']:.0f} mm — "
+            f"{'gouge-free' if fm['gouge_free'] else 'GOUGE'} "
+            f"(wall {fm['min_wall_dist_mm']:.2f} mm)")
 
     def show_rest_machining(self):
         """Stock-aware rest-machining: carry a dexel stock through roughing then

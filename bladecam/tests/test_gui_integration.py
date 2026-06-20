@@ -88,6 +88,9 @@ def main():
     _rm = pipeline.rest_machining(p)
     check(_rm["finish_removed_mm3"] <= _rm["finish_from_raw_mm3"] + 1e-6,
           "operation: rest-machining (finish removes only the rest)")
+    _fm = pipeline.fillet_machining(p)
+    check(_fm["gouge_free"] and _fm["centers"].shape[0] == _fm["n_passes"],
+          "operation: root-fillet finishing (gouge-free ball-nose path)")
     check(pipeline.edge_finish(p)["n_rows"] >= 2, "operation: edge finishing")
     check(pipeline.stacked_flank_passes(p)["n_passes"] >= 1, "operation: stacked passes")
 
